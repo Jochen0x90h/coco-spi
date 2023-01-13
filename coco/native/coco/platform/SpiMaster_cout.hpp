@@ -8,16 +8,16 @@ namespace coco {
 /**
  * Implementation of an SPI master that simply writes info about the transfer operations to std::cout
  */
-class SpiMasterOut : public SpiMaster, public TimeHandler {
+class SpiMaster_cout : public SpiMaster, public YieldHandler {
 public:
 	/**
 	 * Constructor
 	 * @param name name of the SPI master that appears in the printed messages
 	 */
-	explicit SpiMasterOut(std::string name) : name(std::move(name)) {
+	explicit SpiMaster_cout(std::string name) : name(std::move(name)) {
 	}
 
-	~SpiMasterOut() override;
+	~SpiMaster_cout() override;
 
 	[[nodiscard]] Awaitable<Parameters> transfer(const void *writeData, int writeCount, void *readData, int readCount) override;
 	void transferBlocking(const void *writeData, int writeCount, void *readData, int readCount) override;

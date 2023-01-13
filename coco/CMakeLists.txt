@@ -10,9 +10,9 @@ if(${PLATFORM} STREQUAL "native")
 	# native platform (Windows, MacOS, Linux)
 	target_sources(${PROJECT_NAME}
 		PUBLIC FILE_SET platform_headers TYPE HEADERS BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/native FILES
-			native/coco/platform/SpiMasterOut.hpp
+			native/coco/platform/SpiMaster_cout.hpp
 		PRIVATE
-			native/coco/platform/SpiMasterOut.cpp
+			native/coco/platform/SpiMaster_cout.cpp
 	)
 elseif(${PLATFORM} MATCHES "^nrf52")
 	target_sources(${PROJECT_NAME}
@@ -32,7 +32,6 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
 	coco::coco
-	coco-loop::coco-loop # for loop::now() in native
 )
 
 target_include_directories(${PROJECT_NAME}

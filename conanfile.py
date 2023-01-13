@@ -26,9 +26,9 @@ class Project(ConanFile):
     generators = "CMakeDeps"
     exports_sources = "conanfile.py", "CMakeLists.txt", "coco/*", "test/*"
     requires = [
-        "coco/0.1.0",
-        "coco-devboards/0.1.0", # only for testing
-        "coco-loop/0.1.0"
+        "coco/0.3.0",
+        "coco-devboards/0.2.0", # only for testing
+        "coco-loop/0.2.0" # only for testing
     ]
 
 

@@ -3,7 +3,7 @@
 SPI module for CoCo
 
 ## Import
-Add coco-spi/<version> to your conanfile where version corresponds to the git tags
+Add coco-spi/\<version> to your conanfile where version corresponds to the git tags
 
 ## Features
 * SPI with multiple virtual channels, each driving its own CS pin

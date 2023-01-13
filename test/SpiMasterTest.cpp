@@ -11,8 +11,8 @@ uint8_t spiReadData[10];
 Coroutine transferSpi(SpiMaster &spi) {
 	while (true) {
 		co_await spi.transfer(spiWriteData, 2, spiReadData, 10);
-		//co_await Timer::sleep(100ms);
-		//Debug::toggleRedLed();
+		//co_await loop::sleep(1s);
+		//debug::toggleRed();
 	}
 }
 
@@ -29,12 +29,12 @@ Coroutine writeCommandData(Spi spi) {
 	while (true) {
 		co_await spi.command.write(command, 2);
 		co_await spi.data.write(data, 2);
+		//co_await loop::sleep(1s);
 	}
 }
 
 
 int main() {
-	loop::init();
 	debug::init();
 	board::SpiTest drivers;
 
