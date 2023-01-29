@@ -1,6 +1,6 @@
 #include <coco/loop.hpp>
 #include <coco/debug.hpp>
-#include <coco/board/SpiTest.hpp>
+#include <SpiMasterTest.hpp>
 
 
 using namespace coco;
@@ -36,10 +36,11 @@ Coroutine writeCommandData(Spi spi) {
 
 int main() {
 	debug::init();
-	board::SpiTest drivers;
+	Drivers drivers;
 
 	transferSpi(drivers.transfer);
 	writeCommandData({drivers.command, drivers.data});
 	
-	loop::run();
+	drivers.loop.run();
+	return 0;
 }

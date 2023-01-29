@@ -32,6 +32,7 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
 	coco::coco
+	coco-loop::coco-loop
 )
 
 target_include_directories(${PROJECT_NAME}

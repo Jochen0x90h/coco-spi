@@ -6,16 +6,14 @@
 namespace coco {
 
 /**
- * Interface to an SPI device
+ * Interface to an SPI device.
+ * If it is possible to cancel a coroutine that co_awaits completion of transfer() depends on the implementation
  */
 class SpiMaster {
 public:
 
 	// Internal helper: Stores the parameters in the awaitable during co_await
 	struct Parameters {
-		// pointer to configuration
-		void *config;
-
 		// write data
 		void const *writeData;
 		int writeCount;
@@ -23,6 +21,9 @@ public:
 		// read data
 		void *readData;
 		int readCount;
+
+		// context, e.g. the virtual channel the data belongs to
+		void *context;
 	};
 
 

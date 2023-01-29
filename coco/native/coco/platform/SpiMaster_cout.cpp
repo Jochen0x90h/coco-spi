@@ -9,16 +9,16 @@ SpiMaster_cout::~SpiMaster_cout() {
 
 Awaitable<SpiMaster::Parameters> SpiMaster_cout::transfer(const void *writeData, int writeCount, void *readData, int readCount) {
 	if (!inList()) {
-		coco::yieldHandlers.add(*this);
+		this->loop.yieldHandlers.add(*this);
 	}
-	return {this->waitlist, nullptr, writeData, writeCount, readData, readCount};
+	return {this->waitlist, writeData, writeCount, readData, readCount, nullptr};
 }
 
 void SpiMaster_cout::transferBlocking(const void *writeData, int writeCount, void *readData, int readCount) {
-	std::cout << this->name << ' ' << writeCount << ' ' << readCount << std::endl;
+	std::cout << this->name << ": write " << writeCount << " read " << readCount << std::endl;
 }
 
-void SpiMaster_cout::activate() {
+void SpiMaster_cout::handle() {
 	this->remove();
 
 	// resume all coroutines
