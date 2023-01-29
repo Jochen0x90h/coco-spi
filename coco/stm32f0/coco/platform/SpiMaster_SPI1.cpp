@@ -1,6 +1,5 @@
 #include "SpiMaster_SPI1.hpp"
 #include <coco/platform/platform.hpp>
-#include <coco/platform/gpio.hpp>
 #include <algorithm>
 
 
@@ -66,8 +65,8 @@ constexpr int SPI_CR2_DATA_SIZE(int s) { return (s - 1) << SPI_CR2_DS_Pos; }
 constexpr int SPI_CR1 = SPI_CR1_SPE
 	| SPI_CR1_FULL_DUPLEX_MASTER
 	| SPI_CR1_CPHA_1 | SPI_CR1_CPOL_0 // shift on rising edge, sample on falling edge
-	| SPI_CR1_MSB_FIRST
-	| SPI_CR1_DIV8;
+	| SPI_CR1_MSB_FIRST;
+	//| SPI_CR1_DIV8;
 
 constexpr int SPI_CR2 = SPI_CR2_DATA_SIZE(8)
 	| SPI_CR2_FRXTH
@@ -76,7 +75,9 @@ constexpr int SPI_CR2 = SPI_CR2_DATA_SIZE(8)
 }
 
 
-SpiMaster_SPI1::SpiMaster_SPI1(int index, int sckPin, int mosiPin, int misoPin) {
+SpiMaster_SPI1::SpiMaster_SPI1(Loop_TIM2 &loop, Prescaler prescaler, int sckPin, int mosiPin, int misoPin)
+	: cr1(SPI_CR1 | (int(prescaler) << SPI_CR1_BR_Pos))
+{
 	// configure SPI pins (driven low when SPI is disabled)
 	configureAlternateOutput(sckFunction(sckPin));
 	configureAlternateOutput(mosiFunction(mosiPin));
@@ -89,7 +90,7 @@ SpiMaster_SPI1::SpiMaster_SPI1(int index, int sckPin, int mosiPin, int misoPin) 
 	RCC->AHBENR = RCC->AHBENR & ~RCC_AHBENR_DMAEN;
 
 	// add to list of handlers
-	coco::handlers.add(*this);
+	loop.handlers.add(*this);
 }
 
 SpiMaster_SPI1::~SpiMaster_SPI1() {
@@ -111,7 +112,8 @@ void SpiMaster_SPI1::handle() {
 
 			// check for more transfers
 			this->waitlist.visitSecond([this](const SpiMaster::Parameters &p) {
-				startTransfer(p);
+				auto channel = reinterpret_cast<const Channel *>(p.context);
+				startTransfer(p.writeData, p.writeCount, p.readData, p.readCount, channel);
 			});
 
 			// resume first waiting coroutine
@@ -122,19 +124,19 @@ void SpiMaster_SPI1::handle() {
 	}
 }
 
-void SpiMaster_SPI1::startTransfer(const SpiMaster::Parameters &p) {
-	auto &channel = *reinterpret_cast<const Channel *>(p.config);
-
+void SpiMaster_SPI1::startTransfer(const void *writeData, int writeCount, void *readData, int readCount,
+	const Channel *channel)
+{
 	// enable clocks
 	RCC->APB2ENR = RCC->APB2ENR | RCC_APB2ENR_SPI1EN;
 	RCC->AHBENR = RCC->AHBENR | RCC_AHBENR_DMAEN;
 
 	// set transfer state
-	this->csPin = channel.csPin;
-	this->readCount = p.readCount;
-	this->readAddress = (uint32_t)p.readData;
-	this->writeCount = p.writeCount;
-	this->writeAddress = (uint32_t)p.writeData;
+	this->csPin = channel->csPin;
+	this->readCount = readCount;
+	this->readAddress = (uint32_t)readData;
+	this->writeCount = writeCount;
+	this->writeAddress = (uint32_t)writeData;
 
 	// update transfer
 	update();
@@ -217,7 +219,7 @@ bool SpiMaster_SPI1::update() {
 
 	// start SPI
 	SPI1->CR2 = SPI_CR2 | SPI_CR2_TXDMAEN | SPI_CR2_RXDMAEN;
-	SPI1->CR1 = SPI_CR1;
+	SPI1->CR1 = this->cr1;
 
 	return false;
 }
@@ -241,11 +243,10 @@ Awaitable<SpiMaster::Parameters> SpiMaster_SPI1::Channel::transfer(const void *w
 {
 	// start transfer immediately if SPI is idle
 	if (DMA1_Channel2->CCR == 0) {
-		Parameters parameters{this, writeData, writeCount, readData, readCount};
-		this->master.startTransfer(parameters);
+		this->master.startTransfer(writeData, writeCount, readData, readCount, this);
 	}
 
-	return {master.waitlist, this, writeData, writeCount, readData, readCount};
+	return {master.waitlist, writeData, writeCount, readData, readCount, this};
 }
 
 void SpiMaster_SPI1::Channel::transferBlocking(const void *writeData, int writeCount, void *readData, int readCount) {
@@ -263,8 +264,7 @@ void SpiMaster_SPI1::Channel::transferBlocking(const void *writeData, int writeC
 	// clear pending interrupt flag and disable SPI and DMA
 	DMA1->IFCR = DMA_IFCR_CTCIF2;
 
-	Parameters parameters{this, writeData, writeCount, readData, readCount};
-	this->master.startTransfer(parameters);
+	this->master.startTransfer(writeData, writeCount, readData, readCount, this);
 
 	// wait for end of transfer
 	do {

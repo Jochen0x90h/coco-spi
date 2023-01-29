@@ -4,7 +4,7 @@
 
 namespace coco {
 
-SpiMaster_SPIM3::SpiMaster_SPIM3(int sckPin, int mosiPin, int misoPin, int dcPin)
+SpiMaster_SPIM3::SpiMaster_SPIM3(Loop_RTC0 &loop, Speed speed, int sckPin, int mosiPin, int misoPin, int dcPin)
 	: misoPin(misoPin), sharedPin(misoPin == dcPin)
 {
 	// configure SCK pin: output, low on idle
@@ -32,13 +32,13 @@ SpiMaster_SPIM3::SpiMaster_SPIM3(int sckPin, int mosiPin, int misoPin, int dcPin
 
 	// configure SPI
 	NRF_SPIM3->INTENSET = N(SPIM_INTENSET_END, Set);
-	NRF_SPIM3->FREQUENCY = N(SPIM_FREQUENCY_FREQUENCY, M1);
+	NRF_SPIM3->FREQUENCY = int(speed);
 	NRF_SPIM3->CONFIG = N(SPIM_CONFIG_CPOL, ActiveHigh)
 		| N(SPIM_CONFIG_CPHA, Leading)
 		| N(SPIM_CONFIG_ORDER, MsbFirst);
 
 	// add to list of handlers
-	coco::handlers.add(*this);
+	loop.handlers.add(*this);
 }
 
 SpiMaster_SPIM3::~SpiMaster_SPIM3() {
@@ -55,7 +55,8 @@ void SpiMaster_SPIM3::handle() {
 
 		// check for more transfers
 		this->waitlist.visitSecond([this](const SpiMaster::Parameters &p) {
-			startTransfer(p);
+			auto channel = reinterpret_cast<const Channel *>(p.context);
+			startTransfer(p.writeData, p.writeCount, p.readData, p.readCount, channel);
 		});
 
 		// resume first waiting coroutine
@@ -65,15 +66,15 @@ void SpiMaster_SPIM3::handle() {
 	}
 }
 
-void SpiMaster_SPIM3::startTransfer(const SpiMaster::Parameters &p) {
-	auto &channel = *reinterpret_cast<const Channel *>(p.config);
-
+void SpiMaster_SPIM3::startTransfer(const void *writeData, int writeCount, void *readData, int readCount,
+	const Channel *channel)
+{
 	// set CS pin
-	NRF_SPIM3->PSEL.CSN = channel.csPin;
+	NRF_SPIM3->PSEL.CSN = channel->csPin;
 
 	// check if MISO and DC (data/command) are on the same pin
 	if (this->sharedPin) {
-		if (channel.mode != Channel::Mode::NONE) {
+		if (channel->mode != Channel::Mode::NONE) {
 			// DC (data/command signal) overrides MISO, i.e. write-only mode
 			NRF_SPIM3->PSEL.MISO = gpio::DISCONNECTED;
 			NRF_SPIM3->PSELDCX = this->misoPin;
@@ -86,15 +87,15 @@ void SpiMaster_SPIM3::startTransfer(const SpiMaster::Parameters &p) {
 	}
 
 	// set command/data length
-	NRF_SPIM3->DCXCNT = channel.mode == Channel::Mode::COMMAND ? 0xf : 0; // 0 for data and 0xf for command
+	NRF_SPIM3->DCXCNT = channel->mode == Channel::Mode::COMMAND ? 0xf : 0; // 0 for data and 0xf for command
 
 	// set write data
-	NRF_SPIM3->TXD.MAXCNT = p.writeCount;
-	NRF_SPIM3->TXD.PTR = intptr_t(p.writeData);
+	NRF_SPIM3->TXD.MAXCNT = writeCount;
+	NRF_SPIM3->TXD.PTR = intptr_t(writeData);
 
 	// set read data
-	NRF_SPIM3->RXD.MAXCNT = p.readCount;
-	NRF_SPIM3->RXD.PTR = intptr_t(p.readData);
+	NRF_SPIM3->RXD.MAXCNT = readCount;
+	NRF_SPIM3->RXD.PTR = intptr_t(readData);
 
 	// enable and start
 	NRF_SPIM3->ENABLE = N(SPIM_ENABLE_ENABLE, Enabled);
@@ -120,11 +121,10 @@ Awaitable<SpiMaster::Parameters> SpiMaster_SPIM3::Channel::transfer(const void *
 {
 	// start transfer immediately if SPI is idle
 	if (!NRF_SPIM3->ENABLE) {
-		Parameters p{this, writeData, writeCount, readData, readCount};
-		this->master.startTransfer(p);
+		this->master.startTransfer(writeData, writeCount, readData, readCount, this);
 	}
 
-	return {master.waitlist, this, writeData, writeCount, readData, readCount};
+	return {master.waitlist, writeData, writeCount, readData, readCount, this};
 }
 
 void SpiMaster_SPIM3::Channel::transferBlocking(const void *writeData, int writeCount, void *readData, int readCount) {
@@ -141,8 +141,7 @@ void SpiMaster_SPIM3::Channel::transferBlocking(const void *writeData, int write
 	NRF_SPIM3->EVENTS_END = 0;
 	NRF_SPIM3->ENABLE = 0;
 
-	Parameters parameters{this, writeData, writeCount, readData, readCount};
-	this->master.startTransfer(parameters);
+	this->master.startTransfer(writeData, writeCount, readData, readCount, this);
 
 	// wait for end of transfer
 	while (!NRF_SPIM3->EVENTS_END)
