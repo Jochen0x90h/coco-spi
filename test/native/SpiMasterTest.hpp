@@ -9,7 +9,6 @@ using namespace coco;
 // drivers for SpiTest
 struct Drivers {
 	Loop_native loop;
-	SpiMaster_cout transfer{loop, "transfer"};
-	SpiMaster_cout command{loop, "command"};
-	SpiMaster_cout data{loop, "data"};
+	SpiMaster_cout transfer{loop, 16, "transfer"};
+	SpiMaster_cout commandData{loop, 16, "commandData"};
 };

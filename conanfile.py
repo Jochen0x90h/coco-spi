@@ -26,8 +26,9 @@ class Project(ConanFile):
     generators = "CMakeDeps"
     exports_sources = "conanfile.py", "CMakeLists.txt", "coco/*", "test/*"
     requires = [
-        "coco-loop/0.3.0",
-        "coco-devboards/0.3.0" # only for testing
+        "coco-loop/task",
+        "coco-buffer/main",
+        "coco-devboards/main" # only for testing
     ]
 
 
@@ -40,8 +41,9 @@ class Project(ConanFile):
     def configure(self):
         # pass platform option to dependencies
         self.options["coco"].platform = self.options.platform
-        self.options["coco-devboards"].platform = self.options.platform
         self.options["coco-loop"].platform = self.options.platform
+        self.options["coco-buffer"].platform = self.options.platform
+        self.options["coco-devboards"].platform = self.options.platform
 
     keep_imports = True
     def imports(self):

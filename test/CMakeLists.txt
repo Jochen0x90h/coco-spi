@@ -13,7 +13,7 @@ endmacro()
 # iterate over boards and generate tests
 foreach(COMPONENT ${coco-devboards_COMPONENT_NAMES})
 	string(REGEX REPLACE ".*\\:" "" BOARD ${COMPONENT})
-	message("*** Boad: ${BOARD}")
+	message("*** Board: ${BOARD}")
 	
 	# check if board specific header exists
 	if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${BOARD}/SpiMasterTest.hpp)
@@ -37,9 +37,9 @@ foreach(COMPONENT ${coco-devboards_COMPONENT_NAMES})
 
 		target_link_libraries(${NAME}
 			coco::coco
-			${COMPONENT}
 			coco-loop::coco-loop
 			${PROJECT_NAME}
+			${COMPONENT}
 		)
 
 		# generate hex file for flashing the target

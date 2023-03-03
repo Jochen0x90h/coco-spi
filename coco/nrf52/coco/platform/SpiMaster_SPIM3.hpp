@@ -1,6 +1,6 @@
 #pragma once
 
-#include <coco/SpiMaster.hpp>
+#include <coco/Buffer.hpp>
 #include <coco/platform/Loop_RTC0.hpp>
 #include <coco/platform/gpio.hpp>
 
@@ -16,7 +16,7 @@ namespace coco {
  *	GPIO
  *		CS-pins
  */
-class SpiMaster_SPIM3 : public Handler {
+class SpiMaster_SPIM3 : public Loop_RTC0::Handler {
 public:
 	enum class Speed : uint32_t {
 		K125 = 0x02000000, // 125 kbps
@@ -42,47 +42,54 @@ public:
 
 	~SpiMaster_SPIM3() override;
 
-	/**
-	 * Virtual channel to a slave device using a dedicated CS pin
-	 */
-	class Channel : public SpiMaster {
+
+	class BufferBase : public coco::Buffer, public LinkedListNode2 {
 		friend class SpiMaster_SPIM3;
 	public:
-		// mode of DC signal
-		enum class Mode {
-			NONE, // device does not have a DC pin
-			COMMAND, // set DC pin low, overrides MISO if shared with DC
-			DATA // set DC pin high, overrides MISO if shared with DC
-		};
-
 		/**
 		 * Constructor
 		 * @param master the SPI master to operate on
-		 * @param csPin chip select pin of the slave
-		 * @param mode mode of data/command pin
+		 * @param csPin chip select pin of the slave (CS)
+		 * @param dcUsed indicates if DC pin is used and if MISO should be overridden if DC and MISO share the same pin
 		 */
-		Channel(SpiMaster_SPIM3 &master, int csPin, Mode mode = Mode::NONE);
+		BufferBase(uint8_t *data, int size, SpiMaster_SPIM3 &master, int csPin, bool dcUsed);
+		~BufferBase() override;
 
-		~Channel() override;
-
-		[[nodiscard]] Awaitable<Parameters> transfer(const void *writeData, int writeCount, void *readData, int readCount) override;
-		void transferBlocking(const void *writeData, int writeCount, void *readData, int readCount) override;
+		bool start(Op op, int size) override;
+		void cancel() override;
 
 	protected:
+		void transfer();
+
 		SpiMaster_SPIM3 &master;
 		int csPin;
-		Mode mode;
+		bool dcUsed;
+
+		Op op;
+		//int transferred;
+	};
+
+	/**
+	 * Buffer for transferring data to/from an endpoint
+	 * @tparam N size of buffer
+	 */
+	template <int N>
+	class Buffer : public BufferBase {
+	public:
+		Buffer(SpiMaster_SPIM3 &device, int csPin, bool dcUsed = false) : BufferBase(data, N, device, csPin, dcUsed) {}
+
+	protected:
+		uint8_t data[N];
 	};
 
 protected:
 	void handle() override;
-	void startTransfer(const void *writeData, int writeCount, void *readData, int readCount, const Channel *channel);
 
-	int misoPin;
+	int dcPin;
 	bool sharedPin;
 
-	// list for coroutines waiting for transfer to complete
-	Waitlist<SpiMaster::Parameters> waitlist;
+	// list of active transfers
+	LinkedList2<BufferBase> transfers;
 };
 
 } // namespace coco

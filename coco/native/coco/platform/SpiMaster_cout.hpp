@@ -1,34 +1,33 @@
-#include <coco/SpiMaster.hpp>
+#include <coco/Buffer.hpp>
 #include <coco/platform/Loop_native.hpp>
 #include <string>
 
 
 namespace coco {
 
-/**
- * Implementation of an SPI master that simply writes info about the transfer operations to std::cout
- */
-class SpiMaster_cout : public SpiMaster, public YieldHandler {
+class SpiMaster_cout : public Buffer, public Loop_native::YieldHandler {
+	friend class SpiMaster_cout;
 public:
 	/**
 	 * Constructor
-	 * @param loop event loop
-	 * @param name name of the SPI master that appears in the printed messages
+	 * @param master the SPI master to operate on
+	 * @param csPin chip select pin of the slave (CS)
+	 * @param dcUsed indicates if DC pin is used and if MISO should be overridden if DC and MISO share the same pin
 	 */
-	explicit SpiMaster_cout(Loop_native &loop, std::string name) : loop(loop), name(std::move(name)) {
-	}
-
+	SpiMaster_cout(Loop_native &loop, int size, std::string name);
 	~SpiMaster_cout() override;
 
-	[[nodiscard]] Awaitable<Parameters> transfer(const void *writeData, int writeCount, void *readData, int readCount) override;
-	void transferBlocking(const void *writeData, int writeCount, void *readData, int readCount) override;
+	bool start(Op op, int size) override;
+	void cancel() override;
 
 protected:
 	void handle() override;
 
 	Loop_native &loop;
 	std::string name;
-	Waitlist<Parameters> waitlist;
+
+	Op op;
+	//int transferred;
 };
 
 } // namespace coco

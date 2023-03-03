@@ -4,28 +4,56 @@
 
 namespace coco {
 
+
+SpiMaster_cout::SpiMaster_cout(Loop_native &loop, int size, std::string name)
+	: Buffer(new uint8_t[size], size, State::READY), loop(loop), name(name) {
+}
+
 SpiMaster_cout::~SpiMaster_cout() {
+	delete [] this->p.data;
 }
 
-Awaitable<SpiMaster::Parameters> SpiMaster_cout::transfer(const void *writeData, int writeCount, void *readData, int readCount) {
-	if (!inList()) {
-		this->loop.yieldHandlers.add(*this);
+bool SpiMaster_cout::start(Op op, int size) {
+	if (this->p.state != State::READY || (op & Op::READ_WRITE) == 0) {
+		assert(false);
+		return false;
 	}
-	return {this->waitlist, writeData, writeCount, readData, readCount, nullptr};
+
+	this->op = op;
+	this->p.transferred = size;
+
+	if (!this->inList())
+		this->loop.yieldHandlers.add(*this);
+
+	// set state
+	setState(State::BUSY);
+
+	return true;
 }
 
-void SpiMaster_cout::transferBlocking(const void *writeData, int writeCount, void *readData, int readCount) {
-	std::cout << this->name << ": write " << writeCount << " read " << readCount << std::endl;
+void SpiMaster_cout::cancel() {
+	if (this->p.state == State::BUSY) {
+		this->p.transferred = 0;
+		setState(State::CANCELLED);
+	}
 }
 
 void SpiMaster_cout::handle() {
-	this->remove();
+	this->remove(); 
 
-	// resume all coroutines
-	this->waitlist.resumeAll([this](Parameters &p) {
-		transferBlocking(p.writeData, p.writeCount, p.readData, p.readCount);
-		return true;
-	});
+	auto op = this->op;
+	int transferred = this->p.transferred;
+
+	std::cout << this->name << ": ";
+	if ((op & Op::READ) != 0)
+		std::cout << "read ";
+	if ((op & Op::WRITE) != 0)
+		std::cout << "write ";
+	if ((op & Op::COMMAND) != 0)
+		std::cout << "command" << (int(op & Op::COMMAND_MASK) >> COMMAND_SHIFT) << ' ';
+	std::cout << transferred << std::endl;
+
+	completed(transferred);  
 }
 
 } // namespace coco

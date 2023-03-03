@@ -5,30 +5,26 @@
 
 using namespace coco;
 
-uint8_t spiWriteData[] = {0x0a, 0x55};
-uint8_t spiReadData[10];
+const uint8_t spiWriteData[] = {0x0a, 0x55};
 
-Coroutine transferSpi(SpiMaster &spi) {
+Coroutine transferSpi(Buffer &buffer) {
 	while (true) {
-		co_await spi.transfer(spiWriteData, 2, spiReadData, 10);
+		buffer.set(0, spiWriteData);
+		co_await buffer.transfer(Buffer::Op::READ_WRITE, 10);
 		//co_await loop::sleep(1s);
 		//debug::toggleRed();
 	}
 }
 
 
-uint8_t command[] = {0x00, 0xff};
-uint8_t data[] = {0x33, 0x55};
+const uint8_t command[] = {0x00, 0xff};
+const uint8_t data[] = {0x33, 0x55};
 
-struct Spi {
-	SpiMaster &command;
-	SpiMaster &data;
-};
-
-Coroutine writeCommandData(Spi spi) {
+Coroutine writeCommandData(Buffer &buffer) {
 	while (true) {
-		co_await spi.command.write(command, 2);
-		co_await spi.data.write(data, 2);
+		buffer.set(0, command);
+		buffer.set(2, data);
+		co_await buffer.transfer(Buffer::Op::COMMAND2 | Buffer::Op::WRITE, 4);
 		//co_await loop::sleep(1s);
 	}
 }
@@ -39,7 +35,7 @@ int main() {
 	Drivers drivers;
 
 	transferSpi(drivers.transfer);
-	writeCommandData({drivers.command, drivers.data});
+	writeCommandData({drivers.commandData});
 	
 	drivers.loop.run();
 	return 0;

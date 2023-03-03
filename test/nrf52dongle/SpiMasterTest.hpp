@@ -15,7 +15,6 @@ struct Drivers {
 		gpio::P0(20), // MOSI
 		gpio::P0(21), // MISO
 		gpio::P0(21)}; // DC (data/command for write-only display, can be same as MISO)
-	SpiMaster_SPIM3::Channel transfer{spi, gpio::P0(2)};
-	SpiMaster_SPIM3::Channel command{spi, gpio::P0(3), SpiMaster_SPIM3::Channel::Mode::COMMAND};
-	SpiMaster_SPIM3::Channel data{spi, gpio::P0(3), SpiMaster_SPIM3::Channel::Mode::DATA};
+	SpiMaster_SPIM3::Buffer<16> transfer{spi, gpio::P0(2)};
+	SpiMaster_SPIM3::Buffer<16> commandData{spi, gpio::P0(3), true};
 };
