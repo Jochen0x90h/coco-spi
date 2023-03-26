@@ -5,19 +5,22 @@
 
 namespace coco {
 
+/**
+	Implementation of an SPI master that simply writes info about the transfer operations to std::cout
+*/
 class SpiMaster_cout : public Buffer, public Loop_native::YieldHandler {
 	friend class SpiMaster_cout;
 public:
 	/**
 	 * Constructor
-	 * @param master the SPI master to operate on
-	 * @param csPin chip select pin of the slave (CS)
-	 * @param dcUsed indicates if DC pin is used and if MISO should be overridden if DC and MISO share the same pin
+	 * @param loop event loop
+	 * @param capacity buffer capacity
+	 * @param name name for printing
 	 */
-	SpiMaster_cout(Loop_native &loop, int size, std::string name);
+	SpiMaster_cout(Loop_native &loop, int capacity, std::string name);
 	~SpiMaster_cout() override;
 
-	bool start(Op op, int size) override;
+	bool start(Op op) override;
 	void cancel() override;
 
 protected:

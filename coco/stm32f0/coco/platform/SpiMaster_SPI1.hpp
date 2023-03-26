@@ -8,20 +8,20 @@
 namespace coco {
 
 /**
- * Implementation of SPI hardware interface for stm32f0 with multiple virtual channels.
- * Transfers are not cancellable because a dma transfer may be in progress
- * 
- * Reference manual: https://www.st.com/resource/en/reference_manual/dm00031936-stm32f0x1stm32f0x2stm32f0x8-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
- * Data sheet: https://www.st.com/resource/en/datasheet/stm32f042f6.pdf
- *
- * Resources:
- *	SPI1: SPI master (reference manual section 28)
- *	DMA1 (reference manual section 10)
- *		Channel2: Read (reference manual table 29)
- *		Channel3: Write
- *	GPIO
- *		CS-pins
- */
+	Implementation of SPI hardware interface for stm32f0 with multiple virtual channels.
+	Transfers are not cancellable because a dma transfer may be in progress
+
+	Reference manual: https://www.st.com/resource/en/reference_manual/dm00031936-stm32f0x1stm32f0x2stm32f0x8-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
+	Data sheet: https://www.st.com/resource/en/datasheet/stm32f042f6.pdf
+
+	Resources:
+		SPI1: SPI master (reference manual section 28)
+		DMA1 (reference manual section 10)
+			Channel2: Read (reference manual table 29)
+			Channel3: Write
+		GPIO
+		CS-pins
+*/
 class SpiMaster_SPI1 : public Loop_TIM2::Handler {
 public:
 	enum class Prescaler {
@@ -84,7 +84,7 @@ public:
 		BufferBase(uint8_t *data, int size, SpiMaster_SPI1 &master, int csPin, bool dcUsed);
 		~BufferBase() override;
 
-		bool start(Op op, int size) override;
+		bool start(Op op) override;
 		void cancel() override;
 
 	protected:

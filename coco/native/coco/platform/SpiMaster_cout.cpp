@@ -5,22 +5,21 @@
 namespace coco {
 
 
-SpiMaster_cout::SpiMaster_cout(Loop_native &loop, int size, std::string name)
-	: Buffer(new uint8_t[size], size, State::READY), loop(loop), name(name) {
+SpiMaster_cout::SpiMaster_cout(Loop_native &loop, int capacity, std::string name)
+	: Buffer(new uint8_t[capacity], capacity, State::READY), loop(loop), name(name) {
 }
 
 SpiMaster_cout::~SpiMaster_cout() {
 	delete [] this->p.data;
 }
 
-bool SpiMaster_cout::start(Op op, int size) {
+bool SpiMaster_cout::start(Op op) {
 	if (this->p.state != State::READY || (op & Op::READ_WRITE) == 0) {
 		assert(false);
 		return false;
 	}
 
 	this->op = op;
-	this->p.transferred = size;
 
 	if (!this->inList())
 		this->loop.yieldHandlers.add(*this);
@@ -33,16 +32,16 @@ bool SpiMaster_cout::start(Op op, int size) {
 
 void SpiMaster_cout::cancel() {
 	if (this->p.state == State::BUSY) {
-		this->p.transferred = 0;
+		this->p.size = 0;
 		setState(State::CANCELLED);
 	}
 }
 
 void SpiMaster_cout::handle() {
-	this->remove(); 
+	this->remove();
 
 	auto op = this->op;
-	int transferred = this->p.transferred;
+	int transferred = this->p.size;
 
 	std::cout << this->name << ": ";
 	if ((op & Op::READ) != 0)
@@ -53,7 +52,7 @@ void SpiMaster_cout::handle() {
 		std::cout << "command" << (int(op & Op::COMMAND_MASK) >> COMMAND_SHIFT) << ' ';
 	std::cout << transferred << std::endl;
 
-	completed(transferred);  
+	completed(transferred);
 }
 
 } // namespace coco

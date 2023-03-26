@@ -57,7 +57,7 @@ void SpiMaster_SPIM3::handle() {
 		if (!this->transfers.empty()) {
 			auto &buffer = *this->transfers.begin();
 			buffer.remove2();
-			buffer.completed(buffer.p.transferred);
+			buffer.completed(buffer.p.size);
 		}
 
 		// check if we need to start a new transfer
@@ -182,19 +182,18 @@ SpiMaster_SPIM3::BufferBase::BufferBase(uint8_t *data, int size, SpiMaster_SPIM3
 	gpio::configureOutput(csPin);
 }
 
-SpiMaster_SPIM3::BufferBase::~BufferBase() {	
+SpiMaster_SPIM3::BufferBase::~BufferBase() {
 }
 
-bool SpiMaster_SPIM3::BufferBase::start(Op op, int size) {
+bool SpiMaster_SPIM3::BufferBase::start(Op op) {
 	if (this->p.state != State::READY || (op & Op::READ_WRITE) == 0) {
 		assert(false);
 		return false;
 	}
 
 	this->op = op;
-	this->p.transferred = size;
 	this->master.transfers.add(*this);
-	
+
 	// start transfer immediately if SPI is idle
 	if (!NRF_SPIM3->ENABLE)
 		transfer();
@@ -207,7 +206,7 @@ bool SpiMaster_SPIM3::BufferBase::start(Op op, int size) {
 
 void SpiMaster_SPIM3::BufferBase::cancel() {
 	if (this->p.state == State::BUSY) {
-		this->p.transferred = 0;
+		this->p.size = 0;
 		setState(State::CANCELLED);
 	}
 }
@@ -230,9 +229,9 @@ void SpiMaster_SPIM3::BufferBase::transfer() {
 		}
 	}
 
-	int commandCount = std::min(int(this->op & Op::COMMAND_MASK) >> COMMAND_SHIFT, this->p.transferred);
-	int writeCount = (this->op & Op::WRITE) != 0 || commandCount == 15 ? this->p.transferred : commandCount;
-	int readCount = (this->op & Op::READ) != 0 ? this->p.transferred : 0;
+	int commandCount = std::min(int(this->op & Op::COMMAND_MASK) >> COMMAND_SHIFT, this->p.size);
+	int writeCount = (this->op & Op::WRITE) != 0 || commandCount == 15 ? this->p.size : commandCount;
+	int readCount = (this->op & Op::READ) != 0 ? this->p.size : 0;
 
 	// set command/data length
 	NRF_SPIM3->DCXCNT = commandCount;

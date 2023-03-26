@@ -85,9 +85,9 @@ static void enableDma() {
 	DMA1_Channel2->CCR = DMA_CCR_EN
 		| DMA_CCR_TCIE // transfer complete interrupt enable
 		| DMA_CCR_MINC; // auto-increment memory
-	
+
 	// enable write channel
-	DMA1_Channel3->CCR = DMA_CCR_EN 
+	DMA1_Channel3->CCR = DMA_CCR_EN
 		| DMA_CCR_DIR // read from memory
 		| DMA_CCR_MINC; // auto-increment memory
 
@@ -103,9 +103,9 @@ static void enableDmaRead() {
 	DMA1_Channel2->CCR = DMA_CCR_EN
 		| DMA_CCR_TCIE // transfer complete interrupt enable
 		| DMA_CCR_MINC; // auto-increment memory
-	
+
 	// enable write channel (writes zero byte)
-	DMA1_Channel3->CCR = DMA_CCR_EN 
+	DMA1_Channel3->CCR = DMA_CCR_EN
 		| DMA_CCR_DIR; // read from memory
 
 	// now also enable send DMA at SPI
@@ -121,7 +121,7 @@ static void enableDmaWrite() {
 		| DMA_CCR_TCIE; // transfer complete interrupt enable
 
 	// enable write channel
-	DMA1_Channel3->CCR = DMA_CCR_EN 
+	DMA1_Channel3->CCR = DMA_CCR_EN
 		| DMA_CCR_DIR // read from memory
 		| DMA_CCR_MINC; // auto-increment memory
 
@@ -168,7 +168,7 @@ void SpiMaster_SPI1::handle() {
 			this->transfer2 = 0;
 
 			// set DC pin high to indicate data
-			gpio::setOutput(this->dcPin, true); 
+			gpio::setOutput(this->dcPin, true);
 
 			// disable SPI and DMA
 			SPI1->CR1 = 0;
@@ -183,21 +183,21 @@ void SpiMaster_SPI1::handle() {
 				// write and read
 				DMA1_Channel2->CMAR = data;
 				DMA1_Channel3->CMAR = data;
-				enableDma();  
+				enableDma();
 			} else if ((transfer2 & 1) != 0) {
 				// write only
 				DMA1_Channel2->CMAR = (intptr_t)&this->dummy; // read into dummy
 				DMA1_Channel3->CMAR = data;
-				enableDmaWrite();  
+				enableDmaWrite();
 			} else {
 				// read only
 				DMA1_Channel2->CMAR = data;
 				DMA1_Channel3->CMAR = (intptr_t)&this->zero; // write zero
-				enableDmaRead(); 
+				enableDmaRead();
 			}
 
 			// start SPI for second transfer
-			SPI1->CR1 = SPI_CR1; // -> DMA_ISR_TCIF2  
+			SPI1->CR1 = SPI_CR1; // -> DMA_ISR_TCIF2
 		} else {
 			// end of transfer
 
@@ -216,7 +216,7 @@ void SpiMaster_SPI1::handle() {
 			if (!this->transfers.empty()) {
 				auto &buffer = *this->transfers.begin();
 				buffer.remove2();
-				buffer.completed(buffer.p.transferred);
+				buffer.completed(buffer.p.size);
 			}
 
 			// check if we need to start a new transfer
@@ -225,7 +225,7 @@ void SpiMaster_SPI1::handle() {
 				buffer.transfer();
 			}
 		}
-/*		
+/*
 
 		if (update()) {
 			// end of transfer
@@ -417,19 +417,18 @@ SpiMaster_SPI1::BufferBase::BufferBase(uint8_t *data, int size, SpiMaster_SPI1 &
 	gpio::configureOutput(csPin);
 }
 
-SpiMaster_SPI1::BufferBase::~BufferBase() {	
+SpiMaster_SPI1::BufferBase::~BufferBase() {
 }
 
-bool SpiMaster_SPI1::BufferBase::start(Op op, int size) {
+bool SpiMaster_SPI1::BufferBase::start(Op op) {
 	if (this->p.state != State::READY || (op & Op::READ_WRITE) == 0) {
 		assert(false);
 		return false;
 	}
 
 	this->op = op;
-	this->p.transferred = size;
 	this->master.transfers.add(*this);
-	
+
 	// start transfer immediately if SPI is idle
 	if (DMA1_Channel2->CCR == 0)
 		transfer();
@@ -442,7 +441,7 @@ bool SpiMaster_SPI1::BufferBase::start(Op op, int size) {
 
 void SpiMaster_SPI1::BufferBase::cancel() {
 	if (this->p.state == State::BUSY) {
-		this->p.transferred = 0;
+		this->p.size = 0;
 		setState(State::CANCELLED);
 	}
 }
@@ -462,31 +461,31 @@ void SpiMaster_SPI1::BufferBase::transfer() {
 	// enable SPI clock
 	RCC->APB2ENR = RCC->APB2ENR | RCC_APB2ENR_SPI1EN;
 
-	int commandCount = std::min(int(this->op & Op::COMMAND_MASK) >> COMMAND_SHIFT, this->p.transferred);
-	bool separateCommand = this->dcUsed && commandCount > 0 && commandCount < 15 && commandCount < this->p.transferred;
+	int commandCount = std::min(int(this->op & Op::COMMAND_MASK) >> COMMAND_SHIFT, this->p.size);
+	bool separateCommand = this->dcUsed && commandCount > 0 && commandCount < 15 && commandCount < this->p.size;
 	bool write2 = (this->op & Op::WRITE) != 0;
 	bool write1 = write2 || commandCount > 0;
 	bool read = (this->op & Op::READ) != 0;
-	
+
 	auto data = intptr_t(this->p.data);
-	int count = separateCommand ? commandCount : this->p.transferred;
+	int count = separateCommand ? commandCount : this->p.size;
 	DMA1_Channel2->CNDTR = count;
 	DMA1_Channel3->CNDTR = count;
 	if (write1 && read) {
 		// write and read
 		DMA1_Channel2->CMAR = data;
 		DMA1_Channel3->CMAR = data;
-		enableDma();  
+		enableDma();
 	} else if (write1) {
 		// write only
 		DMA1_Channel2->CMAR = (intptr_t)&this->master.dummy; // read into dummy
 		DMA1_Channel3->CMAR = data;
-		enableDmaWrite();  
+		enableDmaWrite();
 	} else {
 		// read only
 		DMA1_Channel2->CMAR = data;
 		DMA1_Channel3->CMAR = (intptr_t)&this->master.zero; // write zero
-		enableDmaRead(); 
+		enableDmaRead();
 	}
 
 	// set DC pin (low: command, high: data)
@@ -505,7 +504,7 @@ void SpiMaster_SPI1::BufferBase::transfer() {
 	if (separateCommand) {
 		this->master.transfer2 = int(write2) | (int(read) << 1);
 		this->master.data = data + commandCount;
-		this->master.count = this->p.transferred - commandCount;
+		this->master.count = this->p.size - commandCount;
 	} else {
 		this->master.transfer2 = 0;
 	}

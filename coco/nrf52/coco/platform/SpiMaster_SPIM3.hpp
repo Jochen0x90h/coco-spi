@@ -8,14 +8,14 @@
 namespace coco {
 
 /**
- * Implementation of SPI hardware interface for nRF52 with multiple virtual channels.
- * Transfers are not cancellable because a dma transfer may be in progress
- * 
- * Resources:
- *	NRF_SPIM3
- *	GPIO
- *		CS-pins
- */
+	Implementation of SPI hardware interface for nRF52 with multiple virtual channels.
+	Transfers are not cancellable because a dma transfer may be in progress
+
+	Resources:
+		NRF_SPIM3
+		GPIO
+			CS-pins
+*/
 class SpiMaster_SPIM3 : public Loop_RTC0::Handler {
 public:
 	enum class Speed : uint32_t {
@@ -55,7 +55,7 @@ public:
 		BufferBase(uint8_t *data, int size, SpiMaster_SPIM3 &master, int csPin, bool dcUsed);
 		~BufferBase() override;
 
-		bool start(Op op, int size) override;
+		bool start(Op op) override;
 		void cancel() override;
 
 	protected:
