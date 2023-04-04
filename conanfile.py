@@ -6,7 +6,6 @@ from conan.tools.cmake import CMake
 class Project(ConanFile):
     name = "coco-spi"
     description = "SPI module for CoCo"
-    url = "https://github.com/Jochen0x90h/coco-spi"
     license = "MIT"
     settings = "os", "compiler", "build_type", "arch"
     options = {

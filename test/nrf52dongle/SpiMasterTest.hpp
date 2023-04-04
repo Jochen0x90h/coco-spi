@@ -6,7 +6,7 @@
 
 using namespace coco;
 
-// drivers for SpiTest
+// drivers for SpiMasterTest
 struct Drivers {
 	Loop_RTC0 loop;
 	SpiMaster_SPIM3 spi{loop,
@@ -15,6 +15,8 @@ struct Drivers {
 		gpio::P0(20), // MOSI
 		gpio::P0(21), // MISO
 		gpio::P0(21)}; // DC (data/command for write-only display, can be same as MISO)
-	SpiMaster_SPIM3::Buffer<16> transfer{spi, gpio::P0(2)};
-	SpiMaster_SPIM3::Buffer<16> commandData{spi, gpio::P0(3), true};
+	SpiMaster_SPIM3::Channel channel1{spi, gpio::P0(2)};
+	SpiMaster_SPIM3::Channel channel2{spi, gpio::P0(3), true};
+	SpiMaster_SPIM3::Buffer<16> transfer{channel1};
+	SpiMaster_SPIM3::Buffer<16> commandData{channel2};
 };

@@ -1,4 +1,5 @@
 #include "SpiMaster_SPIM3.hpp"
+#include <coco/debug.hpp>
 #include <coco/platform/platform.hpp>
 
 
@@ -46,6 +47,7 @@ SpiMaster_SPIM3::~SpiMaster_SPIM3() {
 
 void SpiMaster_SPIM3::handle() {
 	if (NRF_SPIM3->EVENTS_END) {
+//debug::setRed();
 		// clear pending interrupt flags at peripheral and NVIC
 		NRF_SPIM3->EVENTS_END = 0;
 		clearInterrupt(SPIM3_IRQn);
@@ -53,74 +55,26 @@ void SpiMaster_SPIM3::handle() {
 		// disable SPI (indicates idle state)
 		NRF_SPIM3->ENABLE = 0;
 
-		// there should be at least one pending transfer
-		if (!this->transfers.empty()) {
-			auto &buffer = *this->transfers.begin();
-			buffer.remove2();
-			buffer.completed(buffer.p.size);
-		}
+		auto current = this->transfers.begin();
+		if (current != this->transfers.end()) {
+			// check if more transfers are pending
+			auto next = current;
+			++next;
+			if (next != this->transfers.end())
+				next->transfer();
 
-		// check if we need to start a new transfer
-		if (!this->transfers.empty()) {
-			auto &buffer = *this->transfers.begin();
-			buffer.transfer();
+			// set current buffer to ready state and resume waiting coroutines
+			current->remove2();
+			current->setReady();
 		}
-/*
-		// check for more transfers
-		this->waitlist.visitSecond([this](const SpiMaster::Parameters &p) {
-			auto channel = reinterpret_cast<const Channel *>(p.context);
-			startTransfer(p.writeData, p.writeCount, p.readData, p.readCount, channel);
-		});
-
-		// resume first waiting coroutine
-		this->waitlist.resumeFirst([](const SpiMaster::Parameters &p) {
-			return true;
-		});*/
 	}
 }
-/*
-void SpiMaster_SPIM3::startTransfer(const void *writeData, int writeCount, void *readData, int readCount,
-	const Channel *channel)
-{
-	// set CS pin
-	NRF_SPIM3->PSEL.CSN = channel->csPin;
-
-	// check if MISO and DC (data/command) are on the same pin
-	if (this->sharedPin) {
-		if (channel->mode != Channel::Mode::NONE) {
-			// DC (data/command signal) overrides MISO, i.e. write-only mode
-			NRF_SPIM3->PSEL.MISO = gpio::DISCONNECTED;
-			NRF_SPIM3->PSELDCX = this->misoPin;
-			//configureOutput(this->dcPin); // done automatically by hardware
-		} else {
-			// read/write: no DC signal
-			NRF_SPIM3->PSELDCX = gpio::DISCONNECTED;
-			NRF_SPIM3->PSEL.MISO = this->misoPin;
-		}
-	}
-
-	// set command/data length
-	NRF_SPIM3->DCXCNT = channel->mode == Channel::Mode::COMMAND ? 0xf : 0; // 0 for data and 0xf for command
-
-	// set write data
-	NRF_SPIM3->TXD.MAXCNT = writeCount;
-	NRF_SPIM3->TXD.PTR = intptr_t(writeData);
-
-	// set read data
-	NRF_SPIM3->RXD.MAXCNT = readCount;
-	NRF_SPIM3->RXD.PTR = intptr_t(readData);
-
-	// enable and start
-	NRF_SPIM3->ENABLE = N(SPIM_ENABLE_ENABLE, Enabled);
-	NRF_SPIM3->TASKS_START = TRIGGER; // -> END
-}*/
-
 
 
 // Channel
-/*
-SpiMaster_SPIM3::Channel::Channel(SpiMaster_SPIM3 &master, int csPin, Mode mode)
-	: master(master), csPin(csPin), mode(mode)
+
+SpiMaster_SPIM3::Channel::Channel(SpiMaster_SPIM3 &master, int csPin, bool dcUsed)
+	: master(master), csPin(csPin), dcUsed(dcUsed && master.dcPin != gpio::DISCONNECTED)
 {
 	// configure CS pin: output, high on idle
 	gpio::setOutput(csPin, true);
@@ -130,59 +84,32 @@ SpiMaster_SPIM3::Channel::Channel(SpiMaster_SPIM3 &master, int csPin, Mode mode)
 SpiMaster_SPIM3::Channel::~Channel() {
 }
 
-Awaitable<SpiMaster::Parameters> SpiMaster_SPIM3::Channel::transfer(const void *writeData, int writeCount,
-	void *readData, int readCount)
-{
-	// start transfer immediately if SPI is idle
-	if (!NRF_SPIM3->ENABLE) {
-		this->master.startTransfer(writeData, writeCount, readData, readCount, this);
-	}
-
-	return {master.waitlist, writeData, writeCount, readData, readCount, this};
+int SpiMaster_SPIM3::Channel::getBufferCount() {
+	return this->buffers.count();
 }
 
-void SpiMaster_SPIM3::Channel::transferBlocking(const void *writeData, int writeCount, void *readData, int readCount) {
-	// check if a transfer is running
-	bool running = NRF_SPIM3->ENABLE;
-
-	// wait for end of running transfer
-	if (running) {
-		while (!NRF_SPIM3->EVENTS_END)
-			__NOP();
-	}
-
-	// clear pending interrupt flag and disable SPI
-	NRF_SPIM3->EVENTS_END = 0;
-	NRF_SPIM3->ENABLE = 0;
-
-	this->master.startTransfer(writeData, writeCount, readData, readCount, this);
-
-	// wait for end of transfer
-	while (!NRF_SPIM3->EVENTS_END)
-		__NOP();
-
-	// clear pending interrupt flags at peripheral and NVIC unless a transfer was running which gets handled in handle()
-	if (!running) {
-		NRF_SPIM3->EVENTS_END = 0;
-		clearInterrupt(SPIM3_IRQn);
-
-		// disable SPI
-		NRF_SPIM3->ENABLE = 0;
-	}
+Buffer &SpiMaster_SPIM3::Channel::getBuffer(int index) {
+	return this->buffers.get(index);
 }
-*/
+
 
 // BufferBase
 
-SpiMaster_SPIM3::BufferBase::BufferBase(uint8_t *data, int size, SpiMaster_SPIM3 &master, int csPin, bool dcUsed)
-	: coco::Buffer(data, size, BufferBase::State::READY), master(master), csPin(csPin), dcUsed(dcUsed && master.dcPin != gpio::DISCONNECTED)
+SpiMaster_SPIM3::BufferBase::BufferBase(uint8_t *data, int capacity, Channel &channel)
+	: coco::Buffer(data, capacity, BufferBase::State::READY), channel(channel)
 {
-	// configure CS pin: output, high on idle
-	gpio::setOutput(csPin, true);
-	gpio::configureOutput(csPin);
+	channel.buffers.add(*this);
 }
 
 SpiMaster_SPIM3::BufferBase::~BufferBase() {
+}
+
+void SpiMaster_SPIM3::BufferBase::setHeader(const uint8_t *data, int size) {
+	assert(size <= 8);
+
+	// copy header before start of buffer data
+	std::copy(data, data + size, this->p.data - size);
+	this->headerSize = size;
 }
 
 bool SpiMaster_SPIM3::BufferBase::start(Op op) {
@@ -192,7 +119,10 @@ bool SpiMaster_SPIM3::BufferBase::start(Op op) {
 	}
 
 	this->op = op;
-	this->master.transfers.add(*this);
+
+	// add to list of pending transfers
+	this->inProgress = false;
+	this->channel.master.transfers.add(*this);
 
 	// start transfer immediately if SPI is idle
 	if (!NRF_SPIM3->ENABLE)
@@ -208,47 +138,58 @@ void SpiMaster_SPIM3::BufferBase::cancel() {
 	if (this->p.state == State::BUSY) {
 		this->p.size = 0;
 		setState(State::CANCELLED);
+
+		// can be cancelled immediately if not yet in progress
+		if (!this->inProgress) {
+			remove2();
+			setState(State::READY);
+		}
 	}
 }
 
 void SpiMaster_SPIM3::BufferBase::transfer() {
+	this->inProgress = true;
+	auto &master = this->channel.master;
+
 	// set CS pin
-	NRF_SPIM3->PSEL.CSN = this->csPin;
+	NRF_SPIM3->PSEL.CSN = this->channel.csPin;
 
 	// check if MISO and DC (data/command) are on the same pin
-	if (this->master.sharedPin) {
-		if (this->dcUsed) {
+	if (master.sharedPin) {
+		if (this->channel.dcUsed) {
 			// DC (data/command signal) overrides MISO, i.e. write-only mode
 			NRF_SPIM3->PSEL.MISO = gpio::DISCONNECTED;
-			NRF_SPIM3->PSELDCX = this->master.dcPin;
+			NRF_SPIM3->PSELDCX = master.dcPin;
 			//configureOutput(this->dcPin); // done automatically by hardware
 		} else {
 			// read/write: no DC signal
 			NRF_SPIM3->PSELDCX = gpio::DISCONNECTED;
-			NRF_SPIM3->PSEL.MISO = this->master.dcPin;
+			NRF_SPIM3->PSEL.MISO = master.dcPin;
 		}
 	}
 
-	int commandCount = std::min(int(this->op & Op::COMMAND_MASK) >> COMMAND_SHIFT, this->p.size);
-	int writeCount = (this->op & Op::WRITE) != 0 || commandCount == 15 ? this->p.size : commandCount;
-	int readCount = (this->op & Op::READ) != 0 ? this->p.size : 0;
+	int commandCount = (this->op & Op::COMMAND) != 0 ? 15 : this->headerSize;
+	int writeCount = this->headerSize + ((this->op & Op::WRITE) != 0 ? this->p.size : 0);
+	int readCount = (this->op & Op::READ) != 0 ? (this->headerSize + this->p.size) : 0;
+	auto data = intptr_t(this->p.data - this->headerSize);
 
 	// set command/data length
 	NRF_SPIM3->DCXCNT = commandCount;
 
 	// set write data
 	NRF_SPIM3->TXD.MAXCNT = writeCount;
-	NRF_SPIM3->TXD.PTR = intptr_t(this->p.data);
+	NRF_SPIM3->TXD.PTR = data;
 
 	// set read data
 	NRF_SPIM3->RXD.MAXCNT = readCount;
-	NRF_SPIM3->RXD.PTR = intptr_t(this->p.data);
+	NRF_SPIM3->RXD.PTR = data;
 
 	// enable and start
 	NRF_SPIM3->ENABLE = N(SPIM_ENABLE_ENABLE, Enabled);
 	NRF_SPIM3->TASKS_START = TRIGGER; // -> END
-}
 
+	//debug::setGreen();
+}
 
 
 } // namespace coco
