@@ -238,7 +238,7 @@ int SpiMaster_SPI1_DMA::Channel::getBufferCount() {
 	return this->buffers.count();
 }
 
-Buffer &SpiMaster_SPI1_DMA::Channel::getBuffer(int index) {
+HeaderBuffer &SpiMaster_SPI1_DMA::Channel::getBuffer(int index) {
 	return this->buffers.get(index);
 }
 
@@ -246,7 +246,7 @@ Buffer &SpiMaster_SPI1_DMA::Channel::getBuffer(int index) {
 // BufferBase
 
 SpiMaster_SPI1_DMA::BufferBase::BufferBase(uint8_t *data, int capacity, Channel &channel)
-	: coco::Buffer(data, capacity, BufferBase::State::READY), channel(channel)
+	: HeaderBuffer(data, capacity, BufferBase::State::READY), channel(channel)
 {
 	channel.buffers.add(*this);
 }
@@ -255,18 +255,13 @@ SpiMaster_SPI1_DMA::BufferBase::~BufferBase() {
 }
 
 void SpiMaster_SPI1_DMA::BufferBase::setHeader(const uint8_t *data, int size) {
-	assert(size <= 8);
-
 	// copy header before start of buffer data
 	std::copy(data, data + size, this->p.data - size);
 	this->headerSize = size;
 }
 
 bool SpiMaster_SPI1_DMA::BufferBase::start(Op op) {
-	if (this->p.state != State::READY || (op & Op::READ_WRITE) == 0) {
-		assert(false);
-		return false;
-	}
+	assert(this->p.state == State::READY && (op & Op::READ_WRITE) != 0);
 	auto &master = this->channel.master;
 
 	this->op = op;

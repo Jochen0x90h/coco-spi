@@ -88,7 +88,7 @@ int SpiMaster_SPIM3::Channel::getBufferCount() {
 	return this->buffers.count();
 }
 
-Buffer &SpiMaster_SPIM3::Channel::getBuffer(int index) {
+HeaderBuffer &SpiMaster_SPIM3::Channel::getBuffer(int index) {
 	return this->buffers.get(index);
 }
 
@@ -96,7 +96,7 @@ Buffer &SpiMaster_SPIM3::Channel::getBuffer(int index) {
 // BufferBase
 
 SpiMaster_SPIM3::BufferBase::BufferBase(uint8_t *data, int capacity, Channel &channel)
-	: coco::Buffer(data, capacity, BufferBase::State::READY), channel(channel)
+	: HeaderBuffer(data, capacity, BufferBase::State::READY), channel(channel)
 {
 	channel.buffers.add(*this);
 }
@@ -105,18 +105,13 @@ SpiMaster_SPIM3::BufferBase::~BufferBase() {
 }
 
 void SpiMaster_SPIM3::BufferBase::setHeader(const uint8_t *data, int size) {
-	assert(size <= 8);
-
 	// copy header before start of buffer data
 	std::copy(data, data + size, this->p.data - size);
 	this->headerSize = size;
 }
 
 bool SpiMaster_SPIM3::BufferBase::start(Op op) {
-	if (this->p.state != State::READY || (op & Op::READ_WRITE) == 0) {
-		assert(false);
-		return false;
-	}
+	assert(this->p.state == State::READY && (op & Op::READ_WRITE) != 0);
 
 	this->op = op;
 

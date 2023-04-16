@@ -1,6 +1,6 @@
 #pragma once
 
-#include <coco/Buffer.hpp>
+#include <coco/HeaderBufferList.hpp>
 #include <coco/platform/Loop_RTC0.hpp>
 #include <coco/platform/gpio.hpp>
 
@@ -47,7 +47,7 @@ public:
 	/**
 		Virtual channel to a slave device using a dedicated CS pin
 	*/
-	class Channel {
+	class Channel : public HeaderBufferList {
 		friend class BufferBase;
 	public:
 		/**
@@ -60,7 +60,7 @@ public:
 		~Channel();
 
 		int getBufferCount();
-		coco::Buffer &getBuffer(int index);
+		HeaderBuffer &getBuffer(int index);
 
 	protected:
 		// list of buffers
@@ -72,7 +72,7 @@ public:
 	};
 
 
-	class BufferBase : public coco::Buffer, public LinkedListNode, public LinkedListNode2 {
+	class BufferBase : public HeaderBuffer, public LinkedListNode, public LinkedListNode2 {
 		friend class SpiMaster_SPIM3;
 	public:
 		/**
@@ -84,6 +84,7 @@ public:
 		BufferBase(uint8_t *data, int capacity, Channel &channel);
 		~BufferBase() override;
 
+		// maximum size of header supported by hardware for DC pin is 14
 		void setHeader(const uint8_t *data, int size) override;
 		bool start(Op op) override;
 		void cancel() override;
@@ -102,15 +103,16 @@ public:
 	/**
 		Buffer for transferring data to/from a SPI slave.
 		Note that the header may get overwritten when reading data, therefore always set the header before read() or transfer()
-		@tparam N size of buffer
+		@tparam H capacity of header
+		@tparam B capacity of buffer
 	*/
-	template <int N>
+	template <int H, int B>
 	class Buffer : public BufferBase {
 	public:
-		Buffer(Channel &channel) : BufferBase(data + 8, N - 8, channel) {}
+		Buffer(Channel &channel) : BufferBase(data + align4(H), B, channel) {}
 
 	protected:
-		uint8_t data[8 + N];
+		alignas(4) uint8_t data[align4(H) + B];
 	};
 
 protected:

@@ -18,6 +18,6 @@ struct Drivers {
 		gpio::PA(8)}; // DC
 	SpiMaster::Channel channel1{spi, gpio::PA(3)};
 	SpiMaster::Channel channel2{spi, gpio::PA(4), true};
-	SpiMaster::Buffer<16> transfer{channel1};
-	SpiMaster::Buffer<16> commandData{channel2};
+	SpiMaster::Buffer<4, 16> transfer{channel1};
+	SpiMaster::Buffer<4, 16> commandData{channel2};
 };

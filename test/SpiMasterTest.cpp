@@ -6,7 +6,7 @@ using namespace coco;
 
 const uint8_t spiWriteData[] = {0x0a, 0x55};
 
-Coroutine transfer(Loop &loop, Buffer &buffer) {
+Coroutine transfer(Loop &loop, HeaderBuffer &buffer) {
 	while (true) {
 		buffer.set(spiWriteData);
 		co_await buffer.write();
@@ -19,7 +19,7 @@ Coroutine transfer(Loop &loop, Buffer &buffer) {
 const uint8_t command[] = {0x00, 0xff};
 const uint8_t data[] = {0x33, 0x55};
 
-Coroutine writeCommandData(Loop &loop, Buffer &buffer) {
+Coroutine writeCommandData(Loop &loop, HeaderBuffer &buffer) {
 	while (true) {
 		buffer.setHeader(command);
 		buffer.set(data);
