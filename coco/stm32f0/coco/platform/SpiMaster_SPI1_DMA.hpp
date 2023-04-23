@@ -1,6 +1,7 @@
 #pragma once
 
-#include <coco/HeaderBufferList.hpp>
+#include <coco/BufferImpl.hpp>
+#include <coco/Device.hpp>
 #include <coco/platform/Loop_TIM2.hpp>
 #include <coco/platform/gpio.hpp>
 
@@ -60,12 +61,39 @@ public:
 	~SpiMaster_SPI1_DMA() override;
 
 
-	class BufferBase;
+	class Channel;
+
+	class BufferBase : public BufferImpl, public LinkedListNode, public LinkedListNode2 {
+		friend class SpiMaster_SPI1_DMA;
+	public:
+		/**
+			Constructor
+			@param data data of the buffer with 8 bytes preceding the data for the header
+			@param capacity capacity of the buffer
+			@param channel channel to attach to
+		*/
+		BufferBase(uint8_t *data, int capacity, Channel &channel);
+		~BufferBase() override;
+
+		bool setHeader(const uint8_t *data, int size) override;
+		using BufferImpl::setHeader;
+		bool startInternal(int size, Op op) override;
+		void cancel() override;
+
+	protected:
+		void transfer();
+
+		Channel &channel;
+
+		int headerSize = 0;
+		Op op;
+		bool inProgress;
+	};
 
 	/**
 		Virtual channel to a slave device using a dedicated CS pin
 	*/
-	class Channel : public HeaderBufferList {
+	class Channel : public Device {
 		friend class SpiMaster_SPI1_DMA;
 		friend class BufferBase;
 	public:
@@ -78,8 +106,10 @@ public:
 		Channel(SpiMaster_SPI1_DMA &master, int csPin, bool dcUsed = false);
 		~Channel();
 
+		State state() override;
+		Awaitable<State> untilState(State state) override;
 		int getBufferCount();
-		HeaderBuffer &getBuffer(int index);
+		BufferBase &getBuffer(int index);
 
 	protected:
 		// list of buffers
@@ -88,33 +118,6 @@ public:
 		SpiMaster_SPI1_DMA &master;
 		int csPin;
 		bool dcUsed;
-	};
-
-
-	class BufferBase : public HeaderBuffer, public LinkedListNode, public LinkedListNode2 {
-		friend class SpiMaster_SPI1_DMA;
-	public:
-		/**
-			Constructor
-			@param data data of the buffer with 8 bytes preceding the data for the header
-			@param capacity capacity of the buffer
-			@param channel channel to attach to
-		*/
-		BufferBase(uint8_t *data, int capacity, Channel &channel);
-		~BufferBase() override;
-
-		void setHeader(const uint8_t *data, int size) override;
-		bool start(Op op) override;
-		void cancel() override;
-
-	protected:
-		void transfer();
-
-		Channel &channel;
-
-		int headerSize = 0;
-		Op op;
-		bool inProgress;
 	};
 
 	/**
@@ -147,6 +150,9 @@ protected:
 	uint8_t zero = 0;
 
 	coco::Buffer::Op transfer2;
+
+	// dummy
+	TaskList<Device::State> stateTasks;
 
 	// list of active transfers
 	LinkedList2<BufferBase> transfers;

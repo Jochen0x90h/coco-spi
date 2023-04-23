@@ -5,46 +5,62 @@
 namespace coco {
 
 SpiMaster_cout::SpiMaster_cout(Loop_native &loop, int headerCapacity, int capacity, std::string name)
-	: HeaderBuffer(new uint8_t[align4(headerCapacity) + capacity] + align4(headerCapacity), capacity, State::READY)
+	: BufferImpl(new uint8_t[align4(headerCapacity) + capacity] + align4(headerCapacity), capacity, State::READY)
 	, loop(loop), name(name), headerCapacity(headerCapacity)
 {
 }
 
 SpiMaster_cout::~SpiMaster_cout() {
-	delete [] (this->p.data - align4(this->headerCapacity));
+	delete [] (this->buffer.data - align4(this->headerCapacity));
 }
 
-void SpiMaster_cout::setHeader(const uint8_t *data, int size) {
-	assert(size <= this->headerCapacity);
+bool SpiMaster_cout::setHeader(const uint8_t *data, int size) {
+	if (size > this->headerCapacity) {
+		assert(false);
+		return false;
+	}
 
 	// copy header before start of buffer data
-	std::copy(data, data + size, this->p.data - size);
+	std::copy(data, data + size, this->buffer.data - size);
 	this->headerSize = size;
+	return true;
 }
 
-bool SpiMaster_cout::start(Op op) {
-	assert(this->p.state == State::READY && (op & Op::READ_WRITE) != 0);
+bool SpiMaster_cout::startInternal(int size, Op op) {
+	if (this->p.state != State::READY) {
+		assert(false);
+		return false;
+	}
 
+	// check if READ or WRITE flag is set
+	assert((op & Op::READ_WRITE) != 0);
+
+	this->p.result.transferred = size;
 	this->op = op;
 
 	if (!this->inList())
 		this->loop.yieldHandlers.add(*this);
 
 	// set state
-	setState(State::BUSY);
+	setBusy();
 
 	return true;
 }
 
 void SpiMaster_cout::cancel() {
-	if (this->p.state == State::BUSY) {
-		this->p.size = 0;
-		setState(State::CANCELLED);
+	if (this->p.state != State::BUSY)
+		return;
+
+	// small transfers can be cancelled immeditely (this is arbitrary and only for testing), otherwise cancel has no effect
+	if (this->p.result.transferred < 4) {
+		remove();
+		setReady(0);
 	}
 }
 
 void SpiMaster_cout::handle() {
-	this->remove();
+	remove();
+	int transferred = this->p.result.transferred;
 
 	std::cout << this->name << ": ";
 
@@ -55,9 +71,9 @@ void SpiMaster_cout::handle() {
 	if (headerSize > 0 && (/*op != Op::WRITE ||*/ !allCommand)) {
 		// need separate header
 		std::cout << "header " << headerSize << ' ';
-		count = this->p.size;
+		count = transferred;
 	} else {
-		count = headerSize + this->p.size;
+		count = headerSize + transferred;
 	}
 
 	if ((op & Op::READ) != 0)

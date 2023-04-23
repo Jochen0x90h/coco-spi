@@ -164,10 +164,11 @@ void SpiMaster_SPI1_DMA::handle() {
 				if (buffer.channel.dcUsed && (buffer.op & coco::Buffer::Op::COMMAND) == 0)
 					gpio::setOutput(this->dcPin, true);
 
-				auto data = intptr_t(buffer.p.data);
-				int count = buffer.p.size;
-				DMA1_Channel2->CNDTR = count;
-				DMA1_Channel3->CNDTR = count;
+				auto data = intptr_t(buffer.buffer.data);
+				int size = buffer.p.result.transferred;
+
+				DMA1_Channel2->CNDTR = size;
+				DMA1_Channel3->CNDTR = size;
 				if (op == coco::Buffer::Op::WRITE) {
 					// write only
 					DMA1_Channel2->CMAR = (intptr_t)&this->dummy; // read into dummy
@@ -184,7 +185,6 @@ void SpiMaster_SPI1_DMA::handle() {
 					DMA1_Channel3->CMAR = data;
 					enableDma();
 				}
-
 			}
 
 			// start SPI for second transfer
@@ -221,32 +221,10 @@ void SpiMaster_SPI1_DMA::handle() {
 }
 
 
-// Channel
-
-SpiMaster_SPI1_DMA::Channel::Channel(SpiMaster_SPI1_DMA &master, int csPin, bool dcUsed)
-	: master(master), csPin(csPin), dcUsed(dcUsed && master.dcPin >= 0)
-{
-	// configure CS pin: output, high on idle
-	gpio::setOutput(csPin, true);
-	gpio::configureOutput(csPin);
-}
-
-SpiMaster_SPI1_DMA::Channel::~Channel() {
-}
-
-int SpiMaster_SPI1_DMA::Channel::getBufferCount() {
-	return this->buffers.count();
-}
-
-HeaderBuffer &SpiMaster_SPI1_DMA::Channel::getBuffer(int index) {
-	return this->buffers.get(index);
-}
-
-
 // BufferBase
 
 SpiMaster_SPI1_DMA::BufferBase::BufferBase(uint8_t *data, int capacity, Channel &channel)
-	: HeaderBuffer(data, capacity, BufferBase::State::READY), channel(channel)
+	: BufferImpl(data, capacity, BufferBase::State::READY), channel(channel)
 {
 	channel.buffers.add(*this);
 }
@@ -254,16 +232,26 @@ SpiMaster_SPI1_DMA::BufferBase::BufferBase(uint8_t *data, int capacity, Channel 
 SpiMaster_SPI1_DMA::BufferBase::~BufferBase() {
 }
 
-void SpiMaster_SPI1_DMA::BufferBase::setHeader(const uint8_t *data, int size) {
+bool SpiMaster_SPI1_DMA::BufferBase::setHeader(const uint8_t *data, int size) {
 	// copy header before start of buffer data
-	std::copy(data, data + size, this->p.data - size);
+	std::copy(data, data + size, this->buffer.data - size);
 	this->headerSize = size;
+
+	// todo: check max size
+	return true;
 }
 
-bool SpiMaster_SPI1_DMA::BufferBase::start(Op op) {
-	assert(this->p.state == State::READY && (op & Op::READ_WRITE) != 0);
-	auto &master = this->channel.master;
+bool SpiMaster_SPI1_DMA::BufferBase::startInternal(int size, Op op) {
+	if (this->p.state != State::READY) {
+		assert(false);
+		return false;
+	}
 
+	// check if READ or WRITE flag is set
+	assert((op & Op::READ_WRITE) != 0);
+
+	auto &master = this->channel.master;
+	this->p.result.transferred = size;
 	this->op = op;
 
 	// add to list of pending transfers
@@ -275,21 +263,19 @@ bool SpiMaster_SPI1_DMA::BufferBase::start(Op op) {
 		transfer();
 
 	// set state
-	setState(State::BUSY);
+	setBusy();
 
 	return true;
 }
 
 void SpiMaster_SPI1_DMA::BufferBase::cancel() {
-	if (this->p.state == State::BUSY) {
-		this->p.size = 0;
-		setState(State::CANCELLED);
+	if (this->p.state != State::BUSY)
+		return;
 
-		// can be cancelled immediately if not yet in progress
-		if (!this->inProgress) {
-			remove2();
-			setState(State::READY);
-		}
+	// can be cancelled immediately if not yet in progress, otherwise cancel has no effect
+	if (!this->inProgress) {
+		remove2();
+		setReady(0);
 	}
 }
 
@@ -311,10 +297,12 @@ void SpiMaster_SPI1_DMA::BufferBase::transfer() {
 	// enable SPI clock
 	RCC->APB2ENR = RCC->APB2ENR | RCC_APB2ENR_SPI1EN;
 
+	int headerSize = this->headerSize;
+	int size = this->p.result.transferred;
+
 	auto op = this->op & Op::READ_WRITE;
 	bool allCommand = (this->op & Op::COMMAND) != 0;
-	int headerSize = this->headerSize;
-	auto data = intptr_t(this->p.data - headerSize);
+	auto data = intptr_t(this->buffer.data - headerSize);
 	if (headerSize > 0 && (/*op != Op::WRITE ||*/ (!allCommand && this->channel.dcUsed))) {
 		// need separate header
 		DMA1_Channel2->CNDTR = headerSize;
@@ -328,7 +316,7 @@ void SpiMaster_SPI1_DMA::BufferBase::transfer() {
 		// prepare second transfer
 		master.transfer2 = op;
 	} else {
-		int count = headerSize + this->p.size;
+		int count = headerSize + size;
 		DMA1_Channel2->CNDTR = count;
 		DMA1_Channel3->CNDTR = count;
 		if (op == Op::WRITE) {
@@ -363,6 +351,38 @@ void SpiMaster_SPI1_DMA::BufferBase::transfer() {
 
 	// start SPI
 	SPI1->CR1 = master.cr1; // -> DMA_ISR_TCIF2
+}
+
+
+// Channel
+
+SpiMaster_SPI1_DMA::Channel::Channel(SpiMaster_SPI1_DMA &master, int csPin, bool dcUsed)
+	: master(master), csPin(csPin), dcUsed(dcUsed && master.dcPin >= 0)
+{
+	// configure CS pin: output, high on idle
+	gpio::setOutput(csPin, true);
+	gpio::configureOutput(csPin);
+}
+
+SpiMaster_SPI1_DMA::Channel::~Channel() {
+}
+
+Device::State SpiMaster_SPI1_DMA::Channel::state() {
+	return State::READY;
+}
+
+Awaitable<Device::State> SpiMaster_SPI1_DMA::Channel::untilState(State state) {
+	if (state == State::READY)
+		return {};
+	return {this->master.stateTasks, state};
+}
+
+int SpiMaster_SPI1_DMA::Channel::getBufferCount() {
+	return this->buffers.count();
+}
+
+SpiMaster_SPI1_DMA::BufferBase &SpiMaster_SPI1_DMA::Channel::getBuffer(int index) {
+	return this->buffers.get(index);
 }
 
 } // namespace coco

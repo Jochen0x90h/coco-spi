@@ -1,6 +1,7 @@
 #pragma once
 
-#include <coco/HeaderBufferList.hpp>
+#include <coco/BufferImpl.hpp>
+#include <coco/Device.hpp>
 #include <coco/platform/Loop_RTC0.hpp>
 #include <coco/platform/gpio.hpp>
 
@@ -42,37 +43,9 @@ public:
 	~SpiMaster_SPIM3() override;
 
 
-	class BufferBase;
+	class Channel;
 
-	/**
-		Virtual channel to a slave device using a dedicated CS pin
-	*/
-	class Channel : public HeaderBufferList {
-		friend class BufferBase;
-	public:
-		/**
-			Constructor
-			@param master the SPI master to operate on
-			@param csPin chip select pin of the slave (CS)
-			@param dcUsed indicates if DC pin is used and if MISO should be overridden if DC and MISO share the same pin
-		*/
-		Channel(SpiMaster_SPIM3 &master, int csPin, bool dcUsed = false);
-		~Channel();
-
-		int getBufferCount();
-		HeaderBuffer &getBuffer(int index);
-
-	protected:
-		// list of buffers
-		LinkedList<BufferBase> buffers;
-
-		SpiMaster_SPIM3 &master;
-		int csPin;
-		bool dcUsed;
-	};
-
-
-	class BufferBase : public HeaderBuffer, public LinkedListNode, public LinkedListNode2 {
+	class BufferBase : public BufferImpl, public LinkedListNode, public LinkedListNode2 {
 		friend class SpiMaster_SPIM3;
 	public:
 		/**
@@ -85,8 +58,9 @@ public:
 		~BufferBase() override;
 
 		// maximum size of header supported by hardware for DC pin is 14
-		void setHeader(const uint8_t *data, int size) override;
-		bool start(Op op) override;
+		bool setHeader(const uint8_t *data, int size) override;
+		using BufferImpl::setHeader;
+		bool startInternal(int size, Op op) override;
 		void cancel() override;
 
 	protected:
@@ -98,6 +72,35 @@ public:
 		int headerSize = 0;
 		Op op;
 		bool inProgress;
+	};
+
+	/**
+		Virtual channel to a slave device using a dedicated CS pin
+	*/
+	class Channel : public Device {
+		friend class BufferBase;
+	public:
+		/**
+			Constructor
+			@param master the SPI master to operate on
+			@param csPin chip select pin of the slave (CS)
+			@param dcUsed indicates if DC pin is used and if MISO should be overridden if DC and MISO share the same pin
+		*/
+		Channel(SpiMaster_SPIM3 &master, int csPin, bool dcUsed = false);
+		~Channel();
+
+		State state() override;
+		Awaitable<State> untilState(State state) override;
+		int getBufferCount() override;
+		BufferBase &getBuffer(int index) override;
+
+	protected:
+		// list of buffers
+		LinkedList<BufferBase> buffers;
+
+		SpiMaster_SPIM3 &master;
+		int csPin;
+		bool dcUsed;
 	};
 
 	/**
@@ -120,6 +123,9 @@ protected:
 
 	int dcPin;
 	bool sharedPin;
+
+	// dummy
+	TaskList<Device::State> stateTasks;
 
 	// list of active transfers
 	LinkedList2<BufferBase> transfers;
