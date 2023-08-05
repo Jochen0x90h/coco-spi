@@ -47,12 +47,11 @@ SpiMaster_SPIM3::~SpiMaster_SPIM3() {
 
 void SpiMaster_SPIM3::handle() {
 	if (NRF_SPIM3->EVENTS_END) {
-//debug::setRed();
 		// clear pending interrupt flags at peripheral and NVIC
 		NRF_SPIM3->EVENTS_END = 0;
 		clearInterrupt(SPIM3_IRQn);
 
-		// disable SPI (indicates idle state)
+		// disable SPI
 		NRF_SPIM3->ENABLE = 0;
 
 		auto current = this->transfers.begin();
@@ -84,7 +83,7 @@ SpiMaster_SPIM3::BufferBase::~BufferBase() {
 
 bool SpiMaster_SPIM3::BufferBase::setHeader(const uint8_t *data, int size) {
 	// copy header before start of buffer data
-	std::copy(data, data + size, this->buffer.data - size);
+	std::copy(data, data + size, this->dat - size);
 	this->headerSize = size;
 
 	// todo: check max size
@@ -92,25 +91,24 @@ bool SpiMaster_SPIM3::BufferBase::setHeader(const uint8_t *data, int size) {
 }
 
 bool SpiMaster_SPIM3::BufferBase::startInternal(int size, Op op) {
-	if (this->p.state != State::READY) {
-		assert(false);
+	if (this->stat != State::READY) {
+		assert(this->stat != State::BUSY);
 		return false;
 	}
 
 	// check if READ or WRITE flag is set
 	assert((op & Op::READ_WRITE) != 0);
 
-	auto &master = this->channel.master;
-	this->p.result.transferred = size;
+	auto &device = this->channel.device;
+	this->xferred = size;
 	this->op = op;
 
-	// add to list of pending transfers
-	this->inProgress = false;
-	master.transfers.add(*this);
-
 	// start transfer immediately if SPI is idle
-	if (!NRF_SPIM3->ENABLE)
+	if (device.transfers.empty())
 		transfer();
+
+	// add to list of pending transfers
+	device.transfers.add(*this);
 
 	// set state
 	setBusy();
@@ -119,44 +117,46 @@ bool SpiMaster_SPIM3::BufferBase::startInternal(int size, Op op) {
 }
 
 void SpiMaster_SPIM3::BufferBase::cancel() {
-	if (this->p.state != State::BUSY)
+	if (this->stat != State::BUSY)
 		return;
 
+	auto &device = this->channel.device;
+	auto current = device.transfers.begin();
+
 	// can be cancelled immediately if not yet in progress, otherwise cancel has no effect
-	if (!this->inProgress) {
+	if (this != &*current) {
 		remove2();
 		setReady(0);
 	}
 }
 
 void SpiMaster_SPIM3::BufferBase::transfer() {
-	this->inProgress = true;
-	auto &master = this->channel.master;
+	auto &device = this->channel.device;
 
 	// set CS pin
 	NRF_SPIM3->PSEL.CSN = this->channel.csPin;
 
 	// check if MISO and DC (data/command) are on the same pin
-	if (master.sharedPin) {
+	if (device.sharedPin) {
 		if (this->channel.dcUsed) {
 			// DC (data/command signal) overrides MISO, i.e. write-only mode
 			NRF_SPIM3->PSEL.MISO = gpio::DISCONNECTED;
-			NRF_SPIM3->PSELDCX = master.dcPin;
+			NRF_SPIM3->PSELDCX = device.dcPin;
 			//configureOutput(this->dcPin); // done automatically by hardware
 		} else {
 			// read/write: no DC signal
 			NRF_SPIM3->PSELDCX = gpio::DISCONNECTED;
-			NRF_SPIM3->PSEL.MISO = master.dcPin;
+			NRF_SPIM3->PSEL.MISO = device.dcPin;
 		}
 	}
 
 	int headerSize = this->headerSize;
-	int size = this->p.result.transferred;
+	int size = this->xferred;
 
 	int commandCount = (this->op & Op::COMMAND) != 0 ? 15 : headerSize;
 	int writeCount = headerSize + ((this->op & Op::WRITE) != 0 ? size : 0);
 	int readCount = (this->op & Op::READ) != 0 ? (headerSize + size) : 0;
-	auto data = intptr_t(this->buffer.data - headerSize);
+	auto data = uintptr_t(this->dat - headerSize);
 
 	// set command/data length
 	NRF_SPIM3->DCXCNT = commandCount;
@@ -172,15 +172,13 @@ void SpiMaster_SPIM3::BufferBase::transfer() {
 	// enable and start
 	NRF_SPIM3->ENABLE = N(SPIM_ENABLE_ENABLE, Enabled);
 	NRF_SPIM3->TASKS_START = TRIGGER; // -> END
-
-	//debug::setGreen();
 }
 
 
 // Channel
 
-SpiMaster_SPIM3::Channel::Channel(SpiMaster_SPIM3 &master, int csPin, bool dcUsed)
-	: master(master), csPin(csPin), dcUsed(dcUsed && master.dcPin != gpio::DISCONNECTED)
+SpiMaster_SPIM3::Channel::Channel(SpiMaster_SPIM3 &device, int csPin, bool dcUsed)
+	: device(device), csPin(csPin), dcUsed(dcUsed && device.dcPin != gpio::DISCONNECTED)
 {
 	// configure CS pin: output, high on idle
 	gpio::setOutput(csPin, true);
@@ -197,7 +195,7 @@ Device::State SpiMaster_SPIM3::Channel::state() {
 Awaitable<Device::State> SpiMaster_SPIM3::Channel::untilState(State state) {
 	if (state == State::READY)
 		return {};
-	return {this->master.stateTasks, state};
+	return {this->device.stateTasks, state};
 }
 
 int SpiMaster_SPIM3::Channel::getBufferCount() {

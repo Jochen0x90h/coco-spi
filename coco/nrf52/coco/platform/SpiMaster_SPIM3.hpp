@@ -11,6 +11,8 @@ namespace coco {
 /**
 	Implementation of SPI hardware interface for nRF52 with multiple virtual channels.
 
+	Reference manual:
+		https://infocenter.nordicsemi.com/topic/ps_nrf52840/spi.html?cp=5_0_0_5_23
 	Resources:
 		NRF_SPIM3
 		GPIO
@@ -71,7 +73,6 @@ public:
 
 		int headerSize = 0;
 		Op op;
-		bool inProgress;
 	};
 
 	/**
@@ -86,7 +87,7 @@ public:
 			@param csPin chip select pin of the slave (CS)
 			@param dcUsed indicates if DC pin is used and if MISO should be overridden if DC and MISO share the same pin
 		*/
-		Channel(SpiMaster_SPIM3 &master, int csPin, bool dcUsed = false);
+		Channel(SpiMaster_SPIM3 &device, int csPin, bool dcUsed = false);
 		~Channel();
 
 		State state() override;
@@ -98,7 +99,7 @@ public:
 		// list of buffers
 		LinkedList<BufferBase> buffers;
 
-		SpiMaster_SPIM3 &master;
+		SpiMaster_SPIM3 &device;
 		int csPin;
 		bool dcUsed;
 	};
@@ -124,7 +125,7 @@ protected:
 	int dcPin;
 	bool sharedPin;
 
-	// dummy
+	// dummy (state is always READY)
 	TaskList<Device::State> stateTasks;
 
 	// list of active transfers

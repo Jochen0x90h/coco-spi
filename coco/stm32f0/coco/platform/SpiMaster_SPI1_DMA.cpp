@@ -49,7 +49,7 @@ constexpr int SPI_CR1 = SPI_CR1_SPE
 	| SPI_CR1_FULL_DUPLEX_MASTER
 	| SPI_CR1_CPHA_1 | SPI_CR1_CPOL_0 // shift on rising edge, sample on falling edge
 	| SPI_CR1_MSB_FIRST;
-	//| SPI_CR1_DIV8; // is configurable
+	//| SPI_CR1_DIV8; // prescaler is configurable
 
 constexpr int SPI_CR2 = SPI_CR2_DATA_SIZE(8)
 	| SPI_CR2_FRXTH
@@ -64,8 +64,9 @@ void enableDma() {
 
 	// enable read channel
 	DMA1_Channel2->CCR = DMA_CCR_EN
-		| DMA_CCR_TCIE // transfer complete interrupt enable
-		| DMA_CCR_MINC; // auto-increment memory
+		| 0 // write to memory
+		| DMA_CCR_MINC // auto-increment memory
+		| DMA_CCR_TCIE; // transfer complete interrupt enable
 
 	// enable write channel
 	DMA1_Channel3->CCR = DMA_CCR_EN
@@ -82,8 +83,9 @@ void enableDmaRead() {
 
 	// enable read channel
 	DMA1_Channel2->CCR = DMA_CCR_EN
-		| DMA_CCR_TCIE // transfer complete interrupt enable
-		| DMA_CCR_MINC; // auto-increment memory
+		| 0 // write to memory
+		| DMA_CCR_MINC // auto-increment memory
+		| DMA_CCR_TCIE; // transfer complete interrupt enable
 
 	// enable write channel (writes zero byte)
 	DMA1_Channel3->CCR = DMA_CCR_EN
@@ -99,6 +101,7 @@ void enableDmaWrite() {
 
 	// enable read channel (reads into dummy byte)
 	DMA1_Channel2->CCR = DMA_CCR_EN
+		| 0 // write to memory
 		| DMA_CCR_TCIE; // transfer complete interrupt enable
 
 	// enable write channel
@@ -130,8 +133,8 @@ SpiMaster_SPI1_DMA::SpiMaster_SPI1_DMA(Loop_TIM2 &loop, Prescaler prescaler,
 
 	// enable clock and initialize DMA
 	RCC->AHBENR = RCC->AHBENR | RCC_AHBENR_DMAEN;
-	DMA1_Channel2->CPAR = (uint32_t)&SPI1->DR; // data register
-	DMA1_Channel3->CPAR = (uint32_t)&SPI1->DR;
+	DMA1_Channel2->CPAR = uintptr_t(&SPI1->DR); // data register
+	DMA1_Channel3->CPAR = uintptr_t(&SPI1->DR);
 
 	// add to list of handlers
 	loop.handlers.add(*this);
@@ -164,20 +167,20 @@ void SpiMaster_SPI1_DMA::handle() {
 				if (buffer.channel.dcUsed && (buffer.op & coco::Buffer::Op::COMMAND) == 0)
 					gpio::setOutput(this->dcPin, true);
 
-				auto data = intptr_t(buffer.buffer.data);
-				int size = buffer.p.result.transferred;
+				auto data = intptr_t(buffer.dat);
+				int size = buffer.xferred;
 
 				DMA1_Channel2->CNDTR = size;
 				DMA1_Channel3->CNDTR = size;
 				if (op == coco::Buffer::Op::WRITE) {
 					// write only
-					DMA1_Channel2->CMAR = (intptr_t)&this->dummy; // read into dummy
+					DMA1_Channel2->CMAR = uintptr_t(&this->dummy); // read into dummy
 					DMA1_Channel3->CMAR = data;
 					enableDmaWrite();
 				}/* else if (op == coco::Buffer::Op::READ) {
 					// read only
 					DMA1_Channel2->CMAR = data;
-					DMA1_Channel3->CMAR = (intptr_t)&this->zero; // write zero
+					DMA1_Channel3->CMAR = uintptr_t(&this->zero); // write zero
 					enableDmaRead();
 				}*/ else {
 					// write and read
@@ -234,7 +237,7 @@ SpiMaster_SPI1_DMA::BufferBase::~BufferBase() {
 
 bool SpiMaster_SPI1_DMA::BufferBase::setHeader(const uint8_t *data, int size) {
 	// copy header before start of buffer data
-	std::copy(data, data + size, this->buffer.data - size);
+	std::copy(data, data + size, this->dat - size);
 	this->headerSize = size;
 
 	// todo: check max size
@@ -242,25 +245,24 @@ bool SpiMaster_SPI1_DMA::BufferBase::setHeader(const uint8_t *data, int size) {
 }
 
 bool SpiMaster_SPI1_DMA::BufferBase::startInternal(int size, Op op) {
-	if (this->p.state != State::READY) {
-		assert(false);
+	if (this->stat != State::READY) {
+		assert(this->stat != State::BUSY);
 		return false;
 	}
 
 	// check if READ or WRITE flag is set
 	assert((op & Op::READ_WRITE) != 0);
 
-	auto &master = this->channel.master;
-	this->p.result.transferred = size;
+	auto &device = this->channel.device;
+	this->xferred = size;
 	this->op = op;
 
-	// add to list of pending transfers
-	this->inProgress = false;
-	master.transfers.add(*this);
-
 	// start transfer immediately if SPI is idle
-	if (DMA1_Channel2->CCR == 0)
+	if (device.transfers.empty())
 		transfer();
+
+	// add to list of pending transfers
+	device.transfers.add(*this);
 
 	// set state
 	setBusy();
@@ -269,28 +271,31 @@ bool SpiMaster_SPI1_DMA::BufferBase::startInternal(int size, Op op) {
 }
 
 void SpiMaster_SPI1_DMA::BufferBase::cancel() {
-	if (this->p.state != State::BUSY)
+	if (this->stat != State::BUSY)
 		return;
 
+	auto &device = this->channel.device;
+	auto current = device.transfers.begin();
+
 	// can be cancelled immediately if not yet in progress, otherwise cancel has no effect
-	if (!this->inProgress) {
+	if (this != &*current) {
 		remove2();
 		setReady(0);
 	}
 }
 
 void SpiMaster_SPI1_DMA::BufferBase::transfer() {
-	this->inProgress = true;
-	auto &master = this->channel.master;
+	//this->inProgress = true;
+	auto &device = this->channel.device;
 
 	// check if MISO and DC (data/command) are on the same pin
-	if (master.sharedPin) {
+	if (device.sharedPin) {
 		if (this->channel.dcUsed) {
 			// DC (data/command signal) overrides MISO, i.e. write-only mode
-			gpio::configureOutput(master.dcPin);
+			gpio::configureOutput(device.dcPin);
 		} else {
 			// read/write: no DC signal
-			gpio::configureAlternateInput({master.dcPin, master.misoFunction}, gpio::Pull::DOWN);
+			gpio::configureAlternateInput({device.dcPin, device.misoFunction}, gpio::Pull::DOWN);
 		}
 	}
 
@@ -298,36 +303,36 @@ void SpiMaster_SPI1_DMA::BufferBase::transfer() {
 	RCC->APB2ENR = RCC->APB2ENR | RCC_APB2ENR_SPI1EN;
 
 	int headerSize = this->headerSize;
-	int size = this->p.result.transferred;
+	int size = this->xferred;
 
 	auto op = this->op & Op::READ_WRITE;
 	bool allCommand = (this->op & Op::COMMAND) != 0;
-	auto data = intptr_t(this->buffer.data - headerSize);
+	auto data = uintptr_t(this->dat - headerSize);
 	if (headerSize > 0 && (/*op != Op::WRITE ||*/ (!allCommand && this->channel.dcUsed))) {
 		// need separate header
 		DMA1_Channel2->CNDTR = headerSize;
 		DMA1_Channel3->CNDTR = headerSize;
 
 		// write only
-		DMA1_Channel2->CMAR = (intptr_t)&master.dummy; // read into dummy
+		DMA1_Channel2->CMAR = uintptr_t(&device.dummy); // read into dummy
 		DMA1_Channel3->CMAR = data;
 		enableDmaWrite();
 
 		// prepare second transfer
-		master.transfer2 = op;
+		device.transfer2 = op;
 	} else {
 		int count = headerSize + size;
 		DMA1_Channel2->CNDTR = count;
 		DMA1_Channel3->CNDTR = count;
 		if (op == Op::WRITE) {
 			// write only
-			DMA1_Channel2->CMAR = (intptr_t)&master.dummy; // read into dummy
+			DMA1_Channel2->CMAR = uintptr_t(&device.dummy); // read into dummy
 			DMA1_Channel3->CMAR = data;
 			enableDmaWrite();
 		}/* else if (op == Op::READ) {
 			// read only
 			DMA1_Channel2->CMAR = data;
-			DMA1_Channel3->CMAR = (intptr_t)&master.zero; // write zero
+			DMA1_Channel3->CMAR = uintptr_t(&device.zero); // write zero
 			enableDmaRead();
 		}*/ else {
 			// write and read
@@ -337,27 +342,27 @@ void SpiMaster_SPI1_DMA::BufferBase::transfer() {
 		}
 
 		// no second transfer
-		master.transfer2 = Op::NONE;
+		device.transfer2 = Op::NONE;
 	}
 
 	// set DC pin (low: command, high: data)
 	if (this->channel.dcUsed)
-		gpio::setOutput(master.dcPin, !(this->headerSize > 0 || allCommand));
+		gpio::setOutput(device.dcPin, !(this->headerSize > 0 || allCommand));
 
 	// set CS pin low and store for later
 	int csPin = this->channel.csPin;
 	gpio::setOutput(csPin, false);
-	master.csPin = csPin;
+	device.csPin = csPin;
 
 	// start SPI
-	SPI1->CR1 = master.cr1; // -> DMA_ISR_TCIF2
+	SPI1->CR1 = device.cr1; // -> DMA_ISR_TCIF2
 }
 
 
 // Channel
 
-SpiMaster_SPI1_DMA::Channel::Channel(SpiMaster_SPI1_DMA &master, int csPin, bool dcUsed)
-	: master(master), csPin(csPin), dcUsed(dcUsed && master.dcPin >= 0)
+SpiMaster_SPI1_DMA::Channel::Channel(SpiMaster_SPI1_DMA &device, int csPin, bool dcUsed)
+	: device(device), csPin(csPin), dcUsed(dcUsed && device.dcPin >= 0)
 {
 	// configure CS pin: output, high on idle
 	gpio::setOutput(csPin, true);
@@ -374,7 +379,7 @@ Device::State SpiMaster_SPI1_DMA::Channel::state() {
 Awaitable<Device::State> SpiMaster_SPI1_DMA::Channel::untilState(State state) {
 	if (state == State::READY)
 		return {};
-	return {this->master.stateTasks, state};
+	return {this->device.stateTasks, state};
 }
 
 int SpiMaster_SPI1_DMA::Channel::getBufferCount() {

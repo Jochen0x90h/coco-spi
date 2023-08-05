@@ -17,15 +17,12 @@ namespace coco {
 				SPI: section 28
 				DMA: section 10, table 29
 				Code Examples: section A.17
-		g4:
-			https://www.st.com/resource/en/reference_manual/rm0440-stm32g4-series-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
-				SPI: section 39
 	Data sheet:
 		f0:
 			https://www.st.com/resource/en/datasheet/stm32f042f6.pdf
-		g4:
-			https://www.st.com/resource/en/datasheet/stm32g431rb.pdf
-
+				Alternate Functions: Section 4, Tables 14-16, Page 37
+			https://www.st.com/resource/en/datasheet/dm00039193.pdf
+				Alternate Functions: Section 4, Tables 14+15, Page 37
 	Resources:
 		SPI1: SPI master
 		DMA1
@@ -87,7 +84,6 @@ public:
 
 		int headerSize = 0;
 		Op op;
-		bool inProgress;
 	};
 
 	/**
@@ -99,11 +95,11 @@ public:
 	public:
 		/**
 			Constructor
-			@param master the SPI master to operate on
+			@param device the SPI device to operate on
 			@param csPin chip select pin of the slave (CS)
 			@param dcUsed indicates if DC pin is used and if MISO should be overridden if DC and MISO share the same pin
 		*/
-		Channel(SpiMaster_SPI1_DMA &master, int csPin, bool dcUsed = false);
+		Channel(SpiMaster_SPI1_DMA &device, int csPin, bool dcUsed = false);
 		~Channel();
 
 		State state() override;
@@ -115,7 +111,7 @@ public:
 		// list of buffers
 		LinkedList<BufferBase> buffers;
 
-		SpiMaster_SPI1_DMA &master;
+		SpiMaster_SPI1_DMA &device;
 		int csPin;
 		bool dcUsed;
 	};
@@ -151,7 +147,7 @@ protected:
 
 	coco::Buffer::Op transfer2;
 
-	// dummy
+	// dummy (state is always READY)
 	TaskList<Device::State> stateTasks;
 
 	// list of active transfers

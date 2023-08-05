@@ -4,14 +4,14 @@
 
 namespace coco {
 
-SpiMaster_cout::SpiMaster_cout(Loop_native &loop, int headerCapacity, int capacity, std::string name)
-	: BufferImpl(new uint8_t[align4(headerCapacity) + capacity] + align4(headerCapacity), capacity, State::READY)
+SpiMaster_cout::SpiMaster_cout(Loop_native &loop, int headerCapacity, int size, std::string name)
+	: BufferImpl(new uint8_t[align4(headerCapacity) + size] + align4(headerCapacity), size, State::READY)
 	, loop(loop), name(name), headerCapacity(headerCapacity)
 {
 }
 
 SpiMaster_cout::~SpiMaster_cout() {
-	delete [] (this->buffer.data - align4(this->headerCapacity));
+	delete [] (this->dat - align4(this->headerCapacity));
 }
 
 bool SpiMaster_cout::setHeader(const uint8_t *data, int size) {
@@ -21,21 +21,21 @@ bool SpiMaster_cout::setHeader(const uint8_t *data, int size) {
 	}
 
 	// copy header before start of buffer data
-	std::copy(data, data + size, this->buffer.data - size);
+	std::copy(data, data + size, this->dat - size);
 	this->headerSize = size;
 	return true;
 }
 
 bool SpiMaster_cout::startInternal(int size, Op op) {
-	if (this->p.state != State::READY) {
-		assert(false);
+	if (this->stat != State::READY) {
+		assert(this->stat != State::BUSY);
 		return false;
 	}
 
 	// check if READ or WRITE flag is set
 	assert((op & Op::READ_WRITE) != 0);
 
-	this->p.result.transferred = size;
+	this->xferred = size;
 	this->op = op;
 
 	if (!this->inList())
@@ -48,11 +48,11 @@ bool SpiMaster_cout::startInternal(int size, Op op) {
 }
 
 void SpiMaster_cout::cancel() {
-	if (this->p.state != State::BUSY)
+	if (this->stat != State::BUSY)
 		return;
 
-	// small transfers can be cancelled immeditely (this is arbitrary and only for testing), otherwise cancel has no effect
-	if (this->p.result.transferred < 4) {
+	// small transfers can be cancelled immeditely, otherwise cancel has no effect (this is arbitrary and only for testing)
+	if (this->xferred < 4) {
 		remove();
 		setReady(0);
 	}
@@ -60,10 +60,10 @@ void SpiMaster_cout::cancel() {
 
 void SpiMaster_cout::handle() {
 	remove();
-	int transferred = this->p.result.transferred;
 
 	std::cout << this->name << ": ";
 
+	int transferred = this->xferred;
 	auto op = this->op & Op::READ_WRITE;
 	bool allCommand = (this->op & Op::COMMAND) != 0;
 	int headerSize = this->headerSize;

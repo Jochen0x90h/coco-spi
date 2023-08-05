@@ -8,9 +8,11 @@ const uint8_t spiWriteData[] = {0x0a, 0x55};
 
 Coroutine transfer(Loop &loop, Buffer &buffer) {
 	while (true) {
-		co_await buffer.writeArray(spiWriteData);
-		//co_await loop.sleep(1s);
+#ifdef NATIVE
+		co_await loop.sleep(100ms);
+#endif
 		//debug::toggleGreen();
+		co_await buffer.writeArray(spiWriteData);
 	}
 }
 
@@ -20,17 +22,20 @@ const uint8_t data[] = {0x33, 0x55};
 
 Coroutine writeCommandData(Loop &loop, Buffer &buffer) {
 	while (true) {
+#ifdef NATIVE
+		co_await loop.sleep(100ms);
+#endif
+		//debug::toggleBlue();
 		buffer.setHeader(command);
 		co_await buffer.writeArray(data);
-		//co_await loop.sleep(1s);
-		//debug::toggleBlue();
 	}
 }
 
 
+Drivers drivers;
+
 int main() {
 	debug::init();
-	Drivers drivers;
 
 	transfer(drivers.loop, drivers.transfer);
 	writeCommandData(drivers.loop, drivers.commandData);

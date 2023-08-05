@@ -17,7 +17,7 @@ public:
 		@param capacity buffer capacity
 		@param name name for printing
 	*/
-	SpiMaster_cout(Loop_native &loop, int headerCapacity, int capacity, std::string name);
+	SpiMaster_cout(Loop_native &loop, int headerCapacity, int size, std::string name);
 	~SpiMaster_cout() override;
 
 	bool setHeader(const uint8_t *data, int size) override;
