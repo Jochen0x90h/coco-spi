@@ -2,53 +2,66 @@
 
 #include <coco/BufferImpl.hpp>
 #include <coco/Device.hpp>
-#include <coco/platform/Loop_RTC0.hpp>
+#include <coco/platform/Loop_TIM2.hpp>
 #include <coco/platform/gpio.hpp>
 
 
 namespace coco {
 
 /**
-	Implementation of SPI hardware interface for nRF52 with multiple virtual channels.
+	Implementation of SPI hardware interface for stm32f0 with multiple virtual channels.
 
 	Reference manual:
-		https://infocenter.nordicsemi.com/topic/ps_nrf52840/spi.html?cp=5_0_0_5_23
+		f0:
+			https://www.st.com/resource/en/reference_manual/dm00031936-stm32f0x1stm32f0x2stm32f0x8-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
+				SPI: section 28
+				DMA: section 10, table 29
+				Code Examples: section A.17
+	Data sheet:
+		f0:
+			https://www.st.com/resource/en/datasheet/stm32f042f6.pdf
+				Alternate Functions: Section 4, Tables 14-16, Page 37
+			https://www.st.com/resource/en/datasheet/dm00039193.pdf
+				Alternate Functions: Section 4, Tables 14+15, Page 37
 	Resources:
-		NRF_SPIM3
+		SPI1: SPI master
+		DMA1
+			Channel2: RX (read)
+			Channel3: TX (write)
 		GPIO
 			CS-pins
 */
-class SpiMaster_SPIM3 : public Loop_RTC0::Handler {
+class SpiMaster_SPI1_DMA : public Loop_TIM2::Handler {
 public:
-	enum class Speed : uint32_t {
-		K125 = 0x02000000, // 125 kbps
-		K250 = 0x04000000, // 250 kbps
- 		K500 = 0x08000000, // 500 kbps
-		M1 = 0x10000000, // 1 Mbps
-		M2 = 0x20000000, // 2 Mbps
-		M4 = 0x40000000, // 4 Mbps
-		M8 = 0x80000000, // 8 Mbps
-		M16 = 0x0A000000, // 16 Mbps
-		M32 = 0x14000000 // 32 Mbps
+	enum class Prescaler {
+		DIV2 = 0,
+		DIV4 = 1,
+		DIV8 = 2,
+		DIV16 = 3,
+		DIV32 = 4,
+		DIV64 = 5,
+		DIV128 = 6,
+		DIV256 = 7
 	};
 
 	/**
 		Constructor
 		@param loop event loop
-		@param sckPin clock pin (SCK)
-		@param mosiPin master out slave in pin (MOSI)
-		@param misoPin master in slave out pin (MISO)
-		@param dcPin data/command pin (DC) e.g. for displays, can be same as MISO for read-only devices
+		@param prescaler clock prescaler
+		@param sckPin clock pin and alternate function (SCK, see data sheet)
+		@param mosiPin master out slave in pin and alternate function (MOSI, see data sheet)
+		@param misoPin master in slave out pin and alternate function (MISO, see data sheet)
+		@param dcPin data/command pin (DC) e.g. for displays, can be same as MISO for write-only devices
 	*/
-	SpiMaster_SPIM3(Loop_RTC0 &loop, Speed speed, int sckPin, int mosiPin, int misoPin, int dcPin = gpio::DISCONNECTED);
+	SpiMaster_SPI1_DMA(Loop_TIM2 &loop, Prescaler prescaler, gpio::PinFunction sckPin, gpio::PinFunction mosiPin, gpio::PinFunction misoPin, int dcPin = -1);
 
-	~SpiMaster_SPIM3() override;
+	~SpiMaster_SPI1_DMA() override;
 
 
 	class Channel;
 
 	class BufferBase : public BufferImpl, public LinkedListNode, public LinkedListNode2 {
-		friend class SpiMaster_SPIM3;
+		friend class SpiMaster_SPI1_DMA;
 	public:
 		/**
 			Constructor
@@ -59,14 +72,12 @@ public:
 		BufferBase(uint8_t *data, int capacity, Channel &channel);
 		~BufferBase() override;
 
-		// maximum size of header supported by hardware for DC pin is 14
 		bool setHeader(const uint8_t *data, int size) override;
 		using BufferImpl::setHeader;
 		bool startInternal(int size, Op op) override;
 		void cancel() override;
 
 	protected:
-		// start transfer
 		void transfer();
 
 		Channel &channel;
@@ -79,27 +90,28 @@ public:
 		Virtual channel to a slave device using a dedicated CS pin
 	*/
 	class Channel : public Device {
+		friend class SpiMaster_SPI1_DMA;
 		friend class BufferBase;
 	public:
 		/**
 			Constructor
-			@param master the SPI master to operate on
+			@param device the SPI device to operate on
 			@param csPin chip select pin of the slave (CS)
 			@param dcUsed indicates if DC pin is used and if MISO should be overridden if DC and MISO share the same pin
 		*/
-		Channel(SpiMaster_SPIM3 &device, int csPin, bool dcUsed = false);
+		Channel(SpiMaster_SPI1_DMA &device, int csPin, bool dcUsed = false);
 		~Channel();
 
 		State state() override;
 		Awaitable<State> untilState(State state) override;
-		int getBufferCount() override;
-		BufferBase &getBuffer(int index) override;
+		int getBufferCount();
+		BufferBase &getBuffer(int index);
 
 	protected:
 		// list of buffers
 		LinkedList<BufferBase> buffers;
 
-		SpiMaster_SPIM3 &device;
+		SpiMaster_SPI1_DMA &device;
 		int csPin;
 		bool dcUsed;
 	};
@@ -122,8 +134,18 @@ public:
 protected:
 	void handle() override;
 
+	uint32_t cr1;
+	int misoFunction;
 	int dcPin;
 	bool sharedPin;
+
+	// current CS pin to set high on end of transfer
+	int csPin;
+
+	uint8_t dummy;
+	uint8_t zero = 0;
+
+	coco::Buffer::Op transfer2;
 
 	// dummy (state is always READY)
 	TaskList<Device::State> stateTasks;
