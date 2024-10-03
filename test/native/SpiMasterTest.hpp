@@ -1,7 +1,7 @@
 #pragma once
 
 #include <coco/platform/Loop_native.hpp>
-#include <coco/platform/SpiMaster_cout.hpp>
+#include <coco/platform/BufferDevice_cout.hpp>
 
 
 using namespace coco;
@@ -9,6 +9,12 @@ using namespace coco;
 // drivers for SpiMasterTest
 struct Drivers {
 	Loop_native loop;
-	SpiMaster_cout transfer{loop, 4, 16, "transfer"};
-	SpiMaster_cout commandData{loop, 4, 16, "commandData"};
+
+	using Device = BufferDevice_cout;
+	Device channel1{loop, "channel1", 100ms};
+	Device channel2{loop, "channel2", 100ms};
+	Device::Buffer buffer1{16, channel1};
+	Device::Buffer buffer2{16, channel2};
 };
+
+Drivers drivers;

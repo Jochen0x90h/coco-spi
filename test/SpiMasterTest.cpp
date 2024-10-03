@@ -6,13 +6,11 @@ using namespace coco;
 
 const uint8_t spiWriteData[] = {0x0a, 0x55};
 
-Coroutine transfer(Loop &loop, Buffer &buffer) {
-	while (true) {
-#ifdef NATIVE
-		co_await loop.sleep(100ms);
-#endif
-		//debug::toggleGreen();
+Coroutine transfer1(Loop &loop, Buffer &buffer) {
+	while (buffer.ready()) {
+		debug::toggleGreen();
 		co_await buffer.writeArray(spiWriteData);
+		//co_await loop.sleep(100ms);
 	}
 }
 
@@ -20,25 +18,18 @@ Coroutine transfer(Loop &loop, Buffer &buffer) {
 const uint8_t command[] = {0x00, 0xff};
 const uint8_t data[] = {0x33, 0x55};
 
-Coroutine writeCommandData(Loop &loop, Buffer &buffer) {
-	while (true) {
-#ifdef NATIVE
-		co_await loop.sleep(100ms);
-#endif
+Coroutine transfer2(Loop &loop, Buffer &buffer) {
+	while (buffer.ready()) {
 		//debug::toggleBlue();
 		buffer.setHeader(command);
-		co_await buffer.writeArray(data);
+		co_await buffer.writeArray(data);//, Buffer::Op::COMMAND);
 	}
 }
 
 
-Drivers drivers;
-
 int main() {
-	debug::init();
-
-	transfer(drivers.loop, drivers.transfer);
-	writeCommandData(drivers.loop, drivers.commandData);
+	transfer1(drivers.loop, drivers.buffer1);
+	transfer2(drivers.loop, drivers.buffer2);
 
 	drivers.loop.run();
 	return 0;

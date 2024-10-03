@@ -9,14 +9,25 @@ using namespace coco;
 // drivers for SpiMasterTest
 struct Drivers {
 	Loop_RTC0 loop;
-	SpiMaster_SPIM3 spi{loop,
-		SpiMaster_SPIM3::Speed::M1,
-		gpio::P0(19), // SCK
-		gpio::P0(20), // MOSI
-		gpio::P0(21), // MISO
-		gpio::P0(21)}; // DC (data/command for write-only display, can be same as MISO)
-	SpiMaster_SPIM3::Channel channel1{spi, gpio::P0(2)};
-	SpiMaster_SPIM3::Channel channel2{spi, gpio::P0(3), true};
-	SpiMaster_SPIM3::Buffer<4, 16> transfer{channel1};
-	SpiMaster_SPIM3::Buffer<4, 16> commandData{channel2};
+
+	using SpiMaster = SpiMaster_SPIM3;
+	SpiMaster spi{loop,
+		gpio::Config::P0_3, // SCK
+		gpio::Config::P0_21 | gpio::Config::PULL_UP, // MISO
+		gpio::Config::P0_2, // MOSI
+		gpio::Config::P0_21 | gpio::Config::PULL_UP, // DC (data/command for write-only display, can be same as MISO)
+		//gpio::Config::P0_8, // DC (data/command)
+		spi::Config::SPEED_1M | spi::Config::PHA0_POL0 | spi::Config::MSB_FIRST};
+	SpiMaster::Channel channel1{spi, gpio::Config::P0_20 | gpio::Config::INVERT}; // nCS
+	SpiMaster::Channel channel2{spi, gpio::Config::P0_19 | gpio::Config::INVERT, true}; // nCS
+	SpiMaster::Buffer<16> buffer1{channel1};
+	SpiMaster::Buffer<16> buffer2{channel2};
 };
+
+Drivers drivers;
+
+extern "C" {
+void SPIM3_IRQHandler() {
+	drivers.spi.SPIM3_IRQHandler();
+}
+}
