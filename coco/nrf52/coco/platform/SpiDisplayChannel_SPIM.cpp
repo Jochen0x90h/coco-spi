@@ -16,7 +16,7 @@ SpiDisplayChannel_SPIM::SpiDisplayChannel_SPIM(SpiMaster_SPIM &device, gpio::Con
 SpiDisplayChannel_SPIM::~SpiDisplayChannel_SPIM() {
 }
 
-void SpiDisplayChannel_SPIM::transferFirst(SpiMaster_SPIM::BufferBase &buffer) {
+int SpiDisplayChannel_SPIM::transferFirst(SpiMaster_SPIM::BufferBase &buffer) {
     auto &r = registers();
 
     // set format
@@ -39,10 +39,11 @@ void SpiDisplayChannel_SPIM::transferFirst(SpiMaster_SPIM::BufferBase &buffer) {
     // start transfer of buffer data
     start(buffer.op(), buffer.data(), buffer.size());
 
+    return 1;
     // -> SPIM_IRQHandler()
 }
 
-bool SpiDisplayChannel_SPIM::transferNext(SpiMaster_SPIM::BufferBase &buffer) {
+int SpiDisplayChannel_SPIM::transferNext(SpiMaster_SPIM::BufferBase &buffer, int steps) {
     auto &r = registers();
 
     // deactivate CS pin
@@ -53,7 +54,8 @@ bool SpiDisplayChannel_SPIM::transferNext(SpiMaster_SPIM::BufferBase &buffer) {
         r.spi->PSEL.MISO = r.spi->PSEL.MISO & ~SPIM_PSEL_MISO_CONNECT_Msk;
 
     // indicate finished
-    return true;
+    return 0;//true
+    // -> SPIM_IRQHandler()
 }
 
 } // namespace coco

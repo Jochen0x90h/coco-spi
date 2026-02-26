@@ -37,7 +37,7 @@ int main() {
     debug::out << "SpiMasterTest2\n";
 
     transfer1(drivers.loop, drivers.buffer1);
-    //transfer2(drivers.loop, drivers.buffer2);
+    transfer2(drivers.loop, drivers.buffer2);
 
     drivers.loop.run();
     return 0;

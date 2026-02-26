@@ -23,8 +23,8 @@ public:
 
 protected:
     // Channel methods
-    void transferFirst(SpiMaster_SPIM::BufferBase &buffer) override;
-    bool transferNext(SpiMaster_SPIM::BufferBase &buffer) override;
+    int transferFirst(SpiMaster_SPIM::BufferBase &buffer) override;
+    int transferNext(SpiMaster_SPIM::BufferBase &buffer, int steps) override;
 
 
     gpio::Config commandPin_;

@@ -47,20 +47,20 @@ public:
         ~BufferBase() override;
 
         // Buffer methods
-        bool start(Op op) override;
+        bool start() override;
         bool cancel() override;
 
-        Op op() {return op_;}
-        void setOp(Op op) {op_ = op;}
+        //Op op() {return op_;}
+        //void setOp(Op op) {op_ = op;}
     protected:
-        void start();
+        //void start();
 
         // Loop_Queue::Handler method
         void handle() override;
 
 
         Channel &channel_;
-        Op op_;
+        //Op op_;
     };
 
     struct Registers {
@@ -88,11 +88,11 @@ public:
     protected:
         Registers &registers() {return device_.registers_;}
 
-        // start first transfer
-        virtual void transferFirst(BufferBase &buffer);
+        // start first transfer and return outstanding steps
+        virtual int transferFirst(BufferBase &buffer);
 
-        // start next transfer or return false if no more transfers are necessary
-        virtual bool transferNext(BufferBase &buffer);
+        // start next transfer or return zero if no more steps to do
+        virtual int transferNext(BufferBase &buffer, int steps);
 
         // start transfer of data (header or buffer)
         void start(BufferBase::Op op, volatile void *data, int size) {

@@ -52,17 +52,17 @@ public:
         ~BufferBase() override;
 
         // Buffer methods
-        bool start(Op op) override;
+        bool start() override;
         bool cancel() override;
 
-        Op op() {return op_;}
-        void setOp(Op op) {op_ = op;}
+        //Op op() {return op_;}
+        //void setOp(Op op) {op_ = op;}
     protected:
         //void start();
         void handle() override;
 
         Channel &channel_;
-        Op op_;
+        //Op op_;
     };
 
     using RxChannel = dma::Channel<dma::Mode::RX8>;
@@ -101,10 +101,10 @@ public:
         auto &op(BufferBase &buffer) {return buffer.op_;}
 
         // start first transfer
-        virtual void transferFirst(BufferBase &buffer);
+        virtual int transferFirst(BufferBase &buffer);
 
         // start next transfer or return false if no more transfers are necessary
-        virtual bool transferNext(BufferBase &buffer);
+        virtual int transferNext(BufferBase &buffer, int steps);
 
 
         SpiMemory_QUADSPI_DMA &device_;
@@ -118,6 +118,7 @@ public:
         uint8_t eraseCommand_;
         uint8_t readStatusCommand_;
 
+        // read status command reads the status into this byte
         volatile uint8_t status_ = false;
 
         // list of buffers

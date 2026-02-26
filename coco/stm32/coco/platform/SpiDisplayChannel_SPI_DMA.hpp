@@ -23,8 +23,8 @@ public:
 
 protected:
     // Channel methods
-    void transferFirst(SpiMaster_SPI_DMA::BufferBase &buffer) override;
-    bool transferNext(SpiMaster_SPI_DMA::BufferBase &buffer) override;
+    int transferFirst(SpiMaster_SPI_DMA::BufferBase &buffer) override;
+    int transferNext(SpiMaster_SPI_DMA::BufferBase &buffer, int steps) override;
 
 
     gpio::Config commandPin_;

@@ -44,18 +44,20 @@ void SpiMaster_SPIM::SPIM_IRQHandler() {
         transfers_.pop(
             [this](BufferBase &buffer) {
                 // try to start the next transfer
-                if (buffer.channel_.transferNext(buffer)) {
+                int steps = buffer.channel_.transferNext(buffer, buffer.steps_);
+                if (steps == 0) {
                     // notify app that buffer has finished
                     loop_.push(buffer);
                     return true;
                 }
+                buffer.steps_ = steps;
 
                 // more transfers needed
                 return false;
             },
             [](BufferBase &next) {
                 // start next buffer
-                next.channel_.transferFirst(next);
+                next.steps_ = next.channel_.transferFirst(next);
             }
         );
     }
@@ -83,7 +85,7 @@ SpiMaster_SPIM::BufferBase &SpiMaster_SPIM::Channel::getBuffer(int index) {
     return buffers_.get(index);
 }
 
-void SpiMaster_SPIM::Channel::transferFirst(BufferBase &buffer) {
+int SpiMaster_SPIM::Channel::transferFirst(BufferBase &buffer) {
     auto &r = registers();
 
     // set format
@@ -92,20 +94,25 @@ void SpiMaster_SPIM::Channel::transferFirst(BufferBase &buffer) {
     // activate CS pin
     gpio::setOutput(csPin_, true);
 
-    int size = std::min(uint16_t(buffer.headerType_), buffer.headerCapacity_);
+    int size = buffer.headerCapacity_;//std::min(uint16_t(buffer.headerType_), buffer.headerCapacity_);
     if (size == 0) {
         // no header, start transfer of buffer data
         start(buffer.op(), buffer.data(), buffer.size());
-        buffer.setOp(BufferBase::Op::NONE);
+        //buffer.setOp(BufferBase::Op::NONE);
+
+        // one more step to do (disable CS pin)
+        return 1;
     } else {
         // start transfer of header
         start(BufferBase::Op::WRITE, buffer.header_, size);
-    }
 
+        // two more steps to do (transfer data, disable CS pin)
+        return 2;
+    }
     // -> SPIM_IRQHandler()
 }
 
-bool SpiMaster_SPIM::Channel::transferNext(BufferBase &buffer) {
+int SpiMaster_SPIM::Channel::transferNext(BufferBase &buffer, int steps) {
     auto &r = registers();
 
     auto op = buffer.op() & BufferBase::Op::READ_WRITE;
@@ -114,9 +121,9 @@ bool SpiMaster_SPIM::Channel::transferNext(BufferBase &buffer) {
         gpio::setOutput(csPin_, false);
 
         // indicate finished
-        return true;
+        return 0;//true;
     }
-    buffer.setOp(BufferBase::Op::NONE);
+    //buffer.setOp(BufferBase::Op::NONE);
 
     // set buffer data
     volatile void *data = buffer.data();
@@ -127,15 +134,15 @@ bool SpiMaster_SPIM::Channel::transferNext(BufferBase &buffer) {
     // start transfer
     r.spi.start();
 
-    // -> DMAx_Rx_IRQHandler()
-    return false;
+    return 1;//false;
+    // -> SPIM_IRQHandler()
 }
 
 
 // SpiMaster_SPIM::BufferBase
 
 SpiMaster_SPIM::BufferBase::BufferBase(uint8_t *header, int headerCapacity, uint8_t* data, int capacity, Channel &channel)
-    : coco::Buffer(header, headerCapacity, headerCapacity, data, capacity, BufferBase::State::READY), channel_(channel)
+    : coco::Buffer(header, headerCapacity, data, capacity, BufferBase::State::READY), channel_(channel)
 {
     channel.buffers_.add(*this);
 }
@@ -143,21 +150,21 @@ SpiMaster_SPIM::BufferBase::BufferBase(uint8_t *header, int headerCapacity, uint
 SpiMaster_SPIM::BufferBase::~BufferBase() {
 }
 
-bool SpiMaster_SPIM::BufferBase::start(Op op) {
-    if (st.state != State::READY || (((op & Op::READ_WRITE) == 0 || size_ == 0) && ((op & Op::ERASE) == 0 || !channel_.eraseSupported_))) {
+bool SpiMaster_SPIM::BufferBase::start() {
+    if (state_ != State::READY || (((op_ & Op::READ_WRITE) == 0 || size_ == 0) && ((op_ & Op::ERASE) == 0 || !channel_.eraseSupported_))) {
         // starting a buffer when the state is BUSY is a bug
-        assert(st.state != State::BUSY);
+        assert(state_ != State::BUSY);
         return false;
     }
     //debug::out << "BufferBase::start\n";
 
-    op_ = op;
+    //op_ = op;
     auto &channel = channel_;
     auto &device = channel.device_;
 
     // add to list of pending transfers and start immediately if list was empty
     if (device.transfers_.push(nvic::Guard(device.spiIrq_), *this))
-        channel.transferFirst(*this);
+        steps_ = channel.transferFirst(*this);
 
     // set state
     setBusy();
@@ -166,21 +173,23 @@ bool SpiMaster_SPIM::BufferBase::start(Op op) {
 }
 
 bool SpiMaster_SPIM::BufferBase::cancel() {
-    if (st.state != State::BUSY)
+    if (state_ != State::BUSY)
         return false;
     auto &device = channel_.device_;
 
     // remove from pending transfers if not yet started, otherwise complete normally
     if (device.transfers_.remove(nvic::Guard(device.spiIrq_), *this, false)) {
         // cancel succeeded: set buffer ready again
-        // resume application code, therefore interrupt should be enabled at this point
-        setReady(0);
+        // resume application code, therefore interrupt is enabled at this point
+        setError(std::errc::operation_canceled);
+        setReady();
     }
 
     return true;
 }
 
 void SpiMaster_SPIM::BufferBase::handle() {
+    setSuccess();
     setReady();
 }
 

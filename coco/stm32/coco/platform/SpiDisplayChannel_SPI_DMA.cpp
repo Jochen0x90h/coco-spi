@@ -19,7 +19,7 @@ SpiDisplayChannel_SPI_DMA::SpiDisplayChannel_SPI_DMA(SpiMaster_SPI_DMA &device, 
 SpiDisplayChannel_SPI_DMA::~SpiDisplayChannel_SPI_DMA() {
 }
 
-void SpiDisplayChannel_SPI_DMA::transferFirst(SpiMaster_SPI_DMA::BufferBase &buffer) {
+int SpiDisplayChannel_SPI_DMA::transferFirst(SpiMaster_SPI_DMA::BufferBase &buffer) {
     auto &r = registers();
 
     // set format
@@ -45,10 +45,11 @@ void SpiDisplayChannel_SPI_DMA::transferFirst(SpiMaster_SPI_DMA::BufferBase &buf
     // start transfer of buffer data
     start(buffer.op(), buffer.data(), buffer.size());
 
+    return 1;
     // -> DMAx_Rx_IRQHandler()
 }
 
-bool SpiDisplayChannel_SPI_DMA::transferNext(SpiMaster_SPI_DMA::BufferBase &buffer) {
+int SpiDisplayChannel_SPI_DMA::transferNext(SpiMaster_SPI_DMA::BufferBase &buffer, int steps) {
     // deactivate CS pin
     gpio::setOutput(csPin_, false);
 
@@ -57,7 +58,8 @@ bool SpiDisplayChannel_SPI_DMA::transferNext(SpiMaster_SPI_DMA::BufferBase &buff
         gpio::setMode(commandPin_, gpio::Mode::ALTERNATE);
 
     // indicate finished
-    return true;
+    return 0;//true;
+    // -> DMAx_Rx_IRQHandler()
 }
 
 } // namespace coco

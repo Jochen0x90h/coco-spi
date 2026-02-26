@@ -54,12 +54,14 @@ void SpiMemory_QUADSPI_DMA::QUADSPI_IRQHandler() {
         // end of transfer
         transfers_.pop(
             [this](BufferBase &buffer) {
-                // deactivate CS pin
-                if (buffer.channel_.transferNext(buffer)) {
+                // try to start the next transfer
+                int steps = buffer.channel_.transferNext(buffer, buffer.steps_);
+                if (steps == 0) {
                     // notify app that buffer has finished
                     loop_.push(buffer);
                     return true;
                 }
+                buffer.steps_ = steps;
 
                 // more transfers needed
                 return false;
@@ -84,20 +86,20 @@ SpiMemory_QUADSPI_DMA::BufferBase::BufferBase(uint8_t *headerAndData, int capaci
 SpiMemory_QUADSPI_DMA::BufferBase::~BufferBase() {
 }
 
-bool SpiMemory_QUADSPI_DMA::BufferBase::start(Op op) {
-    if (st.state != State::READY || (((op & Op::READ_WRITE) == 0 || size_ == 0) && ((op & Op::ERASE) == 0))) {
+bool SpiMemory_QUADSPI_DMA::BufferBase::start() {
+    if (state_ != State::READY || (((op_ & Op::READ_WRITE) == 0 || size_ == 0) && ((op_ & Op::ERASE) == 0))) {
         // starting a buffer when the state is BUSY is a bug
         assert(st.state != State::BUSY);
         return false;
     }
 
-    op_ = op;
+    //op_ = op;
     auto &channel = channel_;
     auto &device = channel.device_;
 
     // add to list of pending transfers and start immediately if list was empty
     if (device.transfers_.push(nvic::Guard(device.qspiIrq_), *this))
-        channel.transferFirst(*this);
+        steps_ = channel.transferFirst(*this);
 
     // set state
     setBusy();
@@ -106,15 +108,16 @@ bool SpiMemory_QUADSPI_DMA::BufferBase::start(Op op) {
 }
 
 bool SpiMemory_QUADSPI_DMA::BufferBase::cancel() {
-    if (st.state != State::BUSY)
+    if (state_ != State::BUSY)
         return false;
     auto &device = channel_.device_;
 
     // remove from pending transfers if not yet started, otherwise complete normally
     if (device.transfers_.remove(nvic::Guard(device.qspiIrq_), *this, false)) {
         // cancel succeeded: set buffer ready again
-        // resume application code, therefore interrupt should be enabled at this point
-        setReady(0);
+        // resume application code, therefore interrupt is enabled at this point
+        setError(std::errc::operation_canceled);
+        setReady();
     }
 
     return true;
@@ -150,7 +153,7 @@ SpiMemory_QUADSPI_DMA::BufferBase &SpiMemory_QUADSPI_DMA::Channel::getBuffer(int
     return buffers_.get(index);
 }
 
-void SpiMemory_QUADSPI_DMA::Channel::transferFirst(BufferBase &buffer) {
+int SpiMemory_QUADSPI_DMA::Channel::transferFirst(BufferBase &buffer) {
     auto &r = registers();
 
     // wait until QUADSQI is not busy
@@ -181,16 +184,23 @@ void SpiMemory_QUADSPI_DMA::Channel::transferFirst(BufferBase &buffer) {
             .setDestinationAddress(data)
             .setCount(size)
             .enable();
+
+        // one more step to do (disable CS pin)
+        return 1;
     } else {
         // write or erase: send write enable command
         r.qspi.setCommConfig(qspi::CommFormat::INSTRUCTION_1_LINE, qspi::Function::INDIRECT_WRITE, writeEnableCommand_);
 
         // set write in progress bit
-        status_ = 1;
+        //status_ = 1;
+
+        // three more steps to do (write or erase, read status, disable CS pin)
+        return 3;
     }
+    // -> QUADSPI_IRQHandler
 }
 
-bool SpiMemory_QUADSPI_DMA::Channel::transferNext(BufferBase &buffer) {
+int SpiMemory_QUADSPI_DMA::Channel::transferNext(BufferBase &buffer, int steps) {
     auto &r = registers();
 
     // deactivate CS pin
@@ -199,8 +209,79 @@ bool SpiMemory_QUADSPI_DMA::Channel::transferNext(BufferBase &buffer) {
     // wait until QUADSQI is not busy
     while ((r.qspi.status() & qspi::Status::BUSY) != 0);
 
+    if (steps == 1) {
+        // indicate finished
+        return 0;
+    }
+
+    if (steps == 3) {
+        // write or erase
+        auto op = buffer.op();
+        volatile void *data = buffer.data();
+        int size = buffer.size();
+        auto commFormat = commFormat_;
+        uint8_t command;
+        if ((op & BufferBase::Op::ERASE) == 0) {
+            // write
+            command = writeCommand_;
+            r.qspi.setSize(size);
+        } else {
+            // erase
+            commFormat &= ~qspi::CommFormat::DATA_MASK;
+            command = eraseCommand_;
+        }
+
+        // configure QUADSPI, activate CS pin
+        uint32_t address = buffer.header<uint32_t>();
+        r.qspi
+            .setCommConfig(commFormat, qspi::Function::INDIRECT_WRITE, command);
+        gpio::setOutput(csPin_, true);
+        r.qspi.setAddress(address); // earliest point where QUADSPI starts
+
+        if ((op & BufferBase::Op::ERASE) == 0) {
+            // write
+            r.dma.tx.configure()
+                .setSourceAddress(data)
+                .setDestinationAddress(&r.qspi->DR)
+                .setCount(size)
+                .enable();
+        } else {
+            // erase: no data needed
+        }
+
+        // indicate write or erase in progress
+        status_ = 1;
+
+        // two more steps to do (read status, disable CS pin)
+        return 2;
+    } else {
+        // read status
+        if ((status_ & 1) == 1) {
+            r.qspi.setSize(1);
+
+            gpio::setOutput(csPin_, true);
+
+            r.qspi.setCommConfig(qspi::CommFormat::INSTRUCTION_1_LINE | qspi::CommFormat::DATA_1_LINE,
+                qspi::Function::INDIRECT_READ, readStatusCommand_);
+
+            r.dma.rx.configure()
+                .setSourceAddress(&r.qspi->DR)
+                .setDestinationAddress(&status_)
+                .setCount(1)
+                .enable();
+
+            // two more steps to do (read status again, disable CS pin)
+            return 2;
+        }
+
+        // indicate finished
+        return 0;
+    }
+
+/*
     auto op = buffer.op() & (BufferBase::Op::WRITE | BufferBase::Op::ERASE);
     if (op == BufferBase::Op::NONE) {
+        // write or erase: read status
         if ((status_ & 1) == 1) {
             r.qspi.setSize(1);
 
@@ -238,7 +319,7 @@ bool SpiMemory_QUADSPI_DMA::Channel::transferNext(BufferBase &buffer) {
         command = eraseCommand_;
     }
 
-    // configure QUADSPI
+    // configure QUADSPI, activate CS pin
     uint32_t address = buffer.header<uint32_t>();
     r.qspi
         .setCommConfig(commFormat, qspi::Function::INDIRECT_WRITE, command);
@@ -258,6 +339,7 @@ bool SpiMemory_QUADSPI_DMA::Channel::transferNext(BufferBase &buffer) {
 
     // not finished yet
     return false;
+    */
 }
 
 } // namespace coco
