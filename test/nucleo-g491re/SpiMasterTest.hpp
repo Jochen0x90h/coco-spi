@@ -23,7 +23,7 @@ struct Drivers {
         spi::SPI1_INFO,
         dma::DMA1_CH1_CH2_INFO};
 
-        SpiMaster::Channel channel1{spi,
+    SpiMaster::Channel channel1{spi,
         gpio::PA9 | gpio::Config::SPEED_MEDIUM | gpio::Config::INVERT, // nCS (CN5 1)
         spi::Format::CLOCK_DIV_16 | spi::Format::PHA1_POL1 | spi::Format::DATA_8};
     SpiDisplayChannel_SPI_DMA channel2{spi,

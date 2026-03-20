@@ -12,7 +12,7 @@ Coroutine transfer1(Loop &loop, Buffer &buffer) {
         buffer.header<uint8_t>() = count++;
         //buffer.setHeaderType<uint8_t>(count & 1);
         //debug::toggleGreen();
-        co_await buffer.writeArray(spiWriteData);
+        co_await buffer.write(spiWriteData);
         //co_await loop.sleep(100ms);
     }
 }
@@ -25,16 +25,16 @@ Coroutine transfer2(Loop &loop, Buffer &buffer) {
     while (buffer.ready()) {
         //debug::toggleBlue();
         buffer.header<uint8_t>() = 1;
-        co_await buffer.writeArray(command);
+        co_await buffer.write(command);
 
         buffer.header<uint8_t>() = 0;
-        co_await buffer.writeArray(data);
+        co_await buffer.write(data);
     }
 }
 
 
 int main() {
-    debug::out << "SpiMasterTest2\n";
+    debug::out << "SpiMasterTest\n";
 
     transfer1(drivers.loop, drivers.buffer1);
     transfer2(drivers.loop, drivers.buffer2);

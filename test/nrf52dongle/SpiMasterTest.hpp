@@ -18,6 +18,7 @@ struct Drivers {
         gpio::P0_21 | gpio::Config::PULL_UP, // MISO
         spim::SPIM0_INFO};
         //spim::SPIM3_INFO};
+
     SpiMaster::Channel channel1{spi,
         gpio::P0_20 | gpio::Config::INVERT, // nCS
         spim::Format::FREQUENCY_500K | spim::Format::PHA1_POL1 | spim::Format::DATA_8};
