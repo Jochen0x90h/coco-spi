@@ -138,7 +138,7 @@ protected:
     int spiIrq_;
 
     // list of active transfers
-    InterruptQueue<BufferBase> transfers_;
+    InterruptQueue2<BufferBase> transfers_;
 };
 
 } // namespace coco

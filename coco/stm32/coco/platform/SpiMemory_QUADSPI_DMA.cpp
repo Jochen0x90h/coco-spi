@@ -52,7 +52,7 @@ void SpiMemory_QUADSPI_DMA::QUADSPI_IRQHandler() {
         r.dma.rx.disable();
 
         // end of transfer
-        transfers_.pop(
+        /*transfers_.pop(
             [this](BufferBase &buffer) {
                 // try to start the next transfer
                 int steps = buffer.channel_.transferNext(buffer, buffer.steps_);
@@ -69,6 +69,24 @@ void SpiMemory_QUADSPI_DMA::QUADSPI_IRQHandler() {
             [](BufferBase &next) {
                 // start next buffer
                 next.channel_.transferFirst(next);
+            }
+        );*/
+        transfers_.popIf(
+            [this](auto &buffer) {
+                // try to start the next transfer
+                int steps = buffer.channel_.transferNext(buffer, buffer.steps_);
+                buffer.steps_ = steps;
+
+                // transfer is finished when steps has reached 0
+                return steps == 0;
+            },
+            [](auto &next) {
+                // start next buffer
+                next.steps_ = next.channel_.transferFirst(next);
+            },
+            [this](auto &buffer) {
+                // notify app that buffer has finished
+                loop_.push(buffer);
             }
         );
     }
@@ -87,9 +105,13 @@ SpiMemory_QUADSPI_DMA::BufferBase::~BufferBase() {
 }
 
 bool SpiMemory_QUADSPI_DMA::BufferBase::start() {
-    if (state_ != State::READY || (((op_ & Op::READ_WRITE) == 0 || size_ == 0) && ((op_ & Op::ERASE) == 0))) {
-        // starting a buffer when the state is BUSY is a bug
-        assert(st.state != State::BUSY);
+    if (state_ != State::READY) {
+        assert(false);
+        setError(std::errc::resource_unavailable_try_again);
+        return false;
+    }
+    if (((op_ & Op::READ_WRITE) == 0 || size_ == 0) && ((op_ & Op::ERASE) == 0)) {
+        setSuccess();
         return false;
     }
 
@@ -113,7 +135,7 @@ bool SpiMemory_QUADSPI_DMA::BufferBase::cancel() {
     auto &device = channel_.device_;
 
     // remove from pending transfers if not yet started, otherwise complete normally
-    if (device.transfers_.remove(nvic::Guard(device.qspiIrq_), *this, false)) {
+    if (device.transfers_.removeButFirst(nvic::Guard(device.qspiIrq_), *this)) {
         // cancel succeeded: set buffer ready again
         // resume application code, therefore interrupt is enabled at this point
         setError(std::errc::operation_canceled);
