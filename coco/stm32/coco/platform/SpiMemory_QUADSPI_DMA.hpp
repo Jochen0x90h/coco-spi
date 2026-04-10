@@ -55,14 +55,10 @@ public:
         bool start() override;
         bool cancel() override;
 
-        //Op op() {return op_;}
-        //void setOp(Op op) {op_ = op;}
     protected:
-        //void start();
         void handle() override;
 
         Channel &channel_;
-        //Op op_;
     };
 
     using RxChannel = dma::Channel<dma::Mode::RX8>;
@@ -149,7 +145,7 @@ protected:
     int qspiIrq_;
 
     // list of active transfers
-    InterruptQueue2<BufferBase> transfers_;
+    InterruptQueue<BufferBase> transfers_;
 };
 
 } // namespace coco

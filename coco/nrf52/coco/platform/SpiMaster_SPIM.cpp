@@ -60,7 +60,7 @@ void SpiMaster_SPIM::SPIM_IRQHandler() {
                 next.steps_ = next.channel_.transferFirst(next);
             }
         );*/
-        transfers_.popIf(
+        auto buffer = transfers_.popIf(
             [this](auto &buffer) {
                 // try to start the next transfer
                 int steps = buffer.channel_.transferNext(buffer, buffer.steps_);
@@ -72,12 +72,15 @@ void SpiMaster_SPIM::SPIM_IRQHandler() {
             [](auto &next) {
                 // start next buffer
                 next.steps_ = next.channel_.transferFirst(next);
-            },
+            }/*,
             [this](auto &buffer) {
                 // notify app that buffer has finished
                 loop_.push(buffer);
-            }
-        );
+            }*/);
+        if (buffer != nullptr) {
+            // notify app that buffer has finished
+            loop_.push(*buffer);
+        }
     }
 }
 
@@ -185,7 +188,7 @@ bool SpiMaster_SPIM::BufferBase::start() {
     auto &device = channel.device_;
 
     // add to list of pending transfers and start immediately if list was empty
-    if (device.transfers_.push(nvic::Guard(device.spiIrq_), *this))
+    if (device.transfers_.guardedPush(nvic::Guard(device.spiIrq_), *this))
         steps_ = channel.transferFirst(*this);
 
     // set state
@@ -200,7 +203,7 @@ bool SpiMaster_SPIM::BufferBase::cancel() {
     auto &device = channel_.device_;
 
     // remove from pending transfers if not yet started, otherwise complete normally
-    if (device.transfers_.removeButFirst(nvic::Guard(device.spiIrq_), *this)) {
+    if (device.transfers_.guardedRemoveExceptFirst(nvic::Guard(device.spiIrq_), *this)) {
         // cancel succeeded: set buffer ready again
         // resume application code, therefore interrupt is enabled at this point
         setError(std::errc::operation_canceled);

@@ -50,17 +50,10 @@ public:
         bool start() override;
         bool cancel() override;
 
-        //Op op() {return op_;}
-        //void setOp(Op op) {op_ = op;}
-    protected:
-        //void start();
-
-        // Loop_Queue::Handler method
+protected:
         void handle() override;
 
-
         Channel &channel_;
-        //Op op_;
     };
 
     struct Registers {
@@ -138,7 +131,7 @@ protected:
     int spiIrq_;
 
     // list of active transfers
-    InterruptQueue2<BufferBase> transfers_;
+    InterruptQueue<BufferBase> transfers_;
 };
 
 } // namespace coco

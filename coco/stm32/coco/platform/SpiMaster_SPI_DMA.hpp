@@ -54,17 +54,10 @@ public:
         bool start() override;
         bool cancel() override;
 
-        //Op op() {return op_;}
-        //void setOp(Op op) {op_ = op;}
     protected:
-        //void start();
-
-        // Loop_Queue::Handler method
         void handle() override;
 
-
         Channel &channel_;
-        //Op op_;
     };
 
     using RxChannel = dma::Channel<dma::Mode::PERIPHERAL_TO_MEMORY | dma::Mode::SOURCE_WIDTH_8 | dma::Mode::DESTINATION_DYNAMIC>;
@@ -145,7 +138,7 @@ protected:
     int rxDmaIrq_;
 
     // list of active transfers
-    InterruptQueue2<BufferBase> transfers_;
+    InterruptQueue<BufferBase> transfers_;
 };
 
 } // namespace coco
