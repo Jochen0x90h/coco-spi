@@ -254,7 +254,7 @@ bool SpiMaster_SPI_DMA::BufferBase::cancel() {
     return true;
 }
 
-void SpiMaster_SPI_DMA::BufferBase::handle() {
+void SpiMaster_SPI_DMA::BufferBase::onCompletion() {
     setReady();
 }
 

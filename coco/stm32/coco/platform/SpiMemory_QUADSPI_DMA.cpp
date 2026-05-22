@@ -148,7 +148,7 @@ bool SpiMemory_QUADSPI_DMA::BufferBase::cancel() {
     return true;
 }
 
-void SpiMemory_QUADSPI_DMA::BufferBase::handle() {
+void SpiMemory_QUADSPI_DMA::BufferBase::onCompletion() {
     setReady();
 }
 

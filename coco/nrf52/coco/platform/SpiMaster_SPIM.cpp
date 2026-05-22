@@ -213,7 +213,7 @@ bool SpiMaster_SPIM::BufferBase::cancel() {
     return true;
 }
 
-void SpiMaster_SPIM::BufferBase::handle() {
+void SpiMaster_SPIM::BufferBase::onCompletion() {
     setSuccess();
     setReady();
 }

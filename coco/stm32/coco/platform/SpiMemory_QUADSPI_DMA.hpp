@@ -41,7 +41,7 @@ public:
     class Channel;
 
     // internal buffer base class, derives from IntrusiveListNode for the list of buffers and Loop_Queue::Handler to be notified from the event loop
-    class BufferBase : public coco::Buffer, public IntrusiveListNode, public Loop_Queue::Handler {
+    class BufferBase : public coco::Buffer, public IntrusiveListNode, public Loop_Queue::CompletionHandler {
         friend class SpiMemory_QUADSPI_DMA;
     public:
         /// @brief Constructor
@@ -56,7 +56,7 @@ public:
         bool cancel() override;
 
     protected:
-        void handle() override;
+        void onCompletion() override;
 
         Channel &channel_;
     };
