@@ -9,11 +9,12 @@ const uint8_t spiWriteData[] = {0x0a, 0x55};
 Coroutine transfer1(Loop &loop, Buffer &buffer) {
     int count = 0;
     while (buffer.ready()) {
+        debug::toggleGreen();
+
         buffer.header<uint8_t>() = count++;
-        //buffer.setHeaderType<uint8_t>(count & 1);
-        //debug::toggleGreen();
         co_await buffer.write(spiWriteData);
-        //co_await loop.sleep(100ms);
+
+        co_await loop.sleep(250ms);
     }
 }
 
@@ -29,6 +30,8 @@ Coroutine transfer2(Loop &loop, Buffer &buffer) {
 
         buffer.header<uint8_t>() = 0;
         co_await buffer.write(data);
+
+        co_await loop.sleep(250ms);
     }
 }
 

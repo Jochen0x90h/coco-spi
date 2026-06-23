@@ -62,25 +62,6 @@ void SpiMaster_SPI_DMA::DMA_Rx_IRQHandler() {
 
         // todo: handle partial transfers (BufferBase::Op::PARTIAL flag set)
 
-        /*transfers_.pop(
-            [this](BufferBase &buffer) {
-                // try to start the next transfer
-                int steps = buffer.channel_.transferNext(buffer, buffer.steps_);
-                if (steps == 0) {
-                    // notify app that buffer has finished
-                    loop_.push(buffer);
-                    return true;
-                }
-                buffer.steps_ = steps;
-
-                // more transfers needed
-                return false;
-            },
-            [](BufferBase &next) {
-                // start next buffer
-                next.steps_ = next.channel_.transferFirst(next);
-            }
-        );*/
         auto buffer = transfers_.popIf(
             [this](auto &buffer) {
                 // try to start the next transfer
@@ -149,6 +130,7 @@ int SpiMaster_SPI_DMA::Channel::transferFirst(BufferBase &buffer) {
         return 1;
     } else {
         // start transfer of header
+        //debug::out << "start header size " << dec(size) << '\n';
         start(BufferBase::Op::WRITE, buffer.header_, size);
 
         // two more steps to do (transfer data, disable CS pin)
@@ -158,22 +140,21 @@ int SpiMaster_SPI_DMA::Channel::transferFirst(BufferBase &buffer) {
 }
 
 int SpiMaster_SPI_DMA::Channel::transferNext(BufferBase &buffer, int steps) {
-    //auto &r = registers();
-
-    //auto op = buffer.op() & BufferBase::Op::READ_WRITE;
-    if (steps == 1) {//op == BufferBase::Op::NONE) {
+    if (steps == 1) {
         // deactivate CS pin
+        //debug::out << "deactivate CS\n";
         gpio::setOutput(csPin_, false);
 
-        // indicate finished
-        return 0;//true;
+        // no more steps to do
+        return 0;
     }
-    //buffer.setOp(BufferBase::Op::NONE);
 
     // start transfer of buffer data
+    //debug::out << "start data size " << dec(buffer.size()) << '\n';
     start(buffer.op(), buffer.data(), buffer.size());
 
-    return 1;//false;
+    // one more step to do (disable CS pin)
+    return 1;
     // -> DMAx_Rx_IRQHandler()
 }
 

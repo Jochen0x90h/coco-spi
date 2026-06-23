@@ -45,6 +45,7 @@ int SpiDisplayChannel_SPI_DMA::transferFirst(SpiMaster_SPI_DMA::BufferBase &buff
     // start transfer of buffer data
     start(buffer.op(), buffer.data(), buffer.size());
 
+    // one more step to do (disable CS pin)
     return 1;
     // -> DMAx_Rx_IRQHandler()
 }
