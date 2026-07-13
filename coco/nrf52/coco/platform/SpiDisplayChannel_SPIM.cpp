@@ -5,8 +5,8 @@
 
 namespace coco {
 
-SpiDisplayChannel_SPIM::SpiDisplayChannel_SPIM(SpiMaster_SPIM &device, gpio::Config csPin,
-    gpio::Config commandPin, bool commandPinShared, uint8_t commandMask, spim::Format format)
+SpiDisplayChannel_SPIM::SpiDisplayChannel_SPIM(SpiMaster_SPIM &device, gpio::Config csPin, spim::Format format,
+    gpio::Config commandPin, bool commandPinShared, uint8_t commandMask)
     : SpiMaster_SPIM::Channel(device, csPin, format)
     , commandPin_(commandPin), commandPinShared_(commandPinShared), commandMask_(commandMask)
 {

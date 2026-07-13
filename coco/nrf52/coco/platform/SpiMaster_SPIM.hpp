@@ -21,14 +21,13 @@ class SpiMaster_SPIM {
 public:
     /// @brief Constructor for the SPI device. For each SPI slave a Channel is needed which drives the CS pin of the slave.
     /// @param loop Event loop
+    /// @param spiInfo Info of SPI instance to use
     /// @param sckPin Clock pin (SCK)
     /// @param mosiPin Master output pin (MOSI), can be NONE
     /// @param misoPin Master input pin (MISO), can be NONE
-    /// @param spiInfo Info of SPI instance to use
-    /// @param dmaInfo Info of DMA channels to use
     /// @param config SPI configuration
-    SpiMaster_SPIM(Loop_Queue &loop, gpio::Config sckPin, gpio::Config mosiPin, gpio::Config misoPin,
-        const spim::Info &spiInfo);
+    SpiMaster_SPIM(Loop_Queue &loop, const spim::Info &spiInfo,
+        gpio::Config sckPin, gpio::Config mosiPin, gpio::Config misoPin);
 
 
     class Channel;
@@ -56,13 +55,36 @@ protected:
         Channel &channel_;
     };
 
+    /// @brief Buffer for transferring data to/from a SPI slave.
+    /// Note that the header may be overwritten when reading data, therefore always set the header before read() or transfer()
+    /// @tparam H capacity of header
+    /// @tparam B capacity of buffer
+    template <int H, int B>
+    class Buffer : public BufferBase {
+    public:
+        Buffer(Channel &channel) : BufferBase(buffer, H, buffer + align4(H), B, channel) {}
+
+    protected:
+        alignas(4) uint8_t buffer[align4(H) + align4(B)];
+    };
+
+    // internal helpers
     struct Registers {
         // spi
         spim::Instance spi;
     };
 
+    enum class Flags {
+        NONE = 0,
+        SUPPORT_ERASE = 1 << 2,
+
+        // the first byte of the header is the header size, otherwise the header size is fixed
+        VARIABLE_HEADER_SIZE = 1 << 3
+    };
+
     /// @brief Virtual channel to a SPI slave device using a dedicated CS pin.
-    /// Default implementation transfers header and data as-is
+    /// Default implementation transfers header and data as-is.
+    /// The header is either fixed or variable size depending on the flags
     class Channel : public BufferDevice {
         friend class SpiMaster_SPIM;
         friend class BufferBase;
@@ -71,7 +93,8 @@ protected:
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), typically nCS, therefore set gpio::Config::INVERT flag
         /// @param format SPI format (prescaler, phase, polarity, endianness, number of data bits)
-        Channel(SpiMaster_SPIM &device, gpio::Config csPin, spim::Format format);
+        /// @param flags Flags, use Flags::VARIABLE_HEADER_SIZE for variable header size
+        Channel(SpiMaster_SPIM &device, gpio::Config csPin, spim::Format format, Flags flags = Flags::NONE);
         ~Channel() override;
 
         // BufferDevice methods
@@ -99,24 +122,12 @@ protected:
         SpiMaster_SPIM &device_;
         gpio::Config csPin_;
         spim::Format format_;
-        bool eraseSupported_ = false;
-        volatile uint8_t dummy_;
+        //bool eraseSupported_ = false;
+        Flags flags_;
+        //volatile uint8_t dummy_;
 
         // list of buffers
         IntrusiveList<BufferBase> buffers_;
-    };
-
-    /// @brief Buffer for transferring data to/from a SPI slave.
-    /// Note that the header may be overwritten when reading data, therefore always set the header before read() or transfer()
-    /// @tparam H capacity of header
-    /// @tparam B capacity of buffer
-    template <int H, int B>
-    class Buffer : public BufferBase {
-    public:
-        Buffer(Channel &channel) : BufferBase(buffer, H, buffer + align4(H), B, channel) {}
-
-    protected:
-        alignas(4) uint8_t buffer[align4(H) + align4(B)];
     };
 
 
@@ -133,5 +144,6 @@ protected:
     // list of active transfers
     InterruptQueue<BufferBase> transfers_;
 };
+COCO_ENUM(SpiMaster_SPIM::Flags)
 
 } // namespace coco

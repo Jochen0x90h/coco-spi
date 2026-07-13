@@ -1,5 +1,5 @@
 #include <coco/debug.hpp>
-#include <SpiMasterTest.hpp>
+#include <SpiMaster-Test.hpp>
 
 
 using namespace coco;

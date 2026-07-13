@@ -9,18 +9,18 @@
 using namespace coco;
 
 
-/// @brief Drivers for SpiMasterTest
+/// @brief Drivers for SpiMaster-Test
 /// Don't forget to lookup the alternate function number in the data sheet!
 /// Also implement the interupt handler for the read DMA channel, check startup_XXX.s for the correct name
 struct Drivers {
-    Loop_TIM2 loop{APB_TIMER_CLOCK};
+    Loop_TIM2 loop{APB1_TIMER_CLOCK};
 
     using SpiMaster = SpiMaster_SPI_DMA;
     SpiMaster spi{loop,
-        gpio::PB3 | gpio::AF0 | gpio::Config::SPEED_MEDIUM, // SPI1 SCK (CN9 4)
-        gpio::PB5 | gpio::AF0 | gpio::Config::SPEED_MEDIUM, // SPI1 MOSI (CN9 5)
-        gpio::PB4 | gpio::AF0 | gpio::Config::SPEED_MEDIUM | gpio::Config::PULL_UP, // SPI1 MISO (CN9 6)
         spi::SPI1_INFO,
+        gpio::PB3 | gpio::AF5 | gpio::Config::SPEED_MEDIUM, // SPI1 SCK (CN9 4)
+        gpio::PB5 | gpio::AF5 | gpio::Config::SPEED_MEDIUM, // SPI1 MOSI (CN9 5)
+        gpio::PB4 | gpio::AF5 | gpio::Config::PULL_UP, // SPI1 MISO (CN9 6)
         dma::DMA1_CH1_CH2_INFO};
 
     SpiMaster::Channel channel1{spi,
@@ -28,9 +28,8 @@ struct Drivers {
         spi::Format::CLOCK_DIV_16 | spi::Format::PHA1_POL1 | spi::Format::DATA_8};
     SpiDisplayChannel_SPI_DMA channel2{spi,
         gpio::PC7 | gpio::Config::SPEED_MEDIUM | gpio::Config::INVERT, // nCS (CN5 2)
-        gpio::PA8 | gpio::Config::SPEED_MEDIUM | gpio::Config::INVERT, false, 0xff, // D/nC (CN9 8)
-        //gpio::PB4 | gpio::Config::INVERT, false, // D/nC shared (CN9 6)
-        spi::Format::CLOCK_DIV_8 | spi::Format::PHA1_POL1 | spi::Format::DATA_8};
+        spi::Format::CLOCK_DIV_8 | spi::Format::PHA1_POL1 | spi::Format::DATA_8,
+        gpio::PA8 | gpio::Config::SPEED_MEDIUM | gpio::Config::INVERT, false, 0xff}; // D/nC (CN9 8)
     SpiMaster::Buffer<1, 16> buffer1{channel1};
     SpiMaster::Buffer<1, 16> buffer2{channel2};
 };

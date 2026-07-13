@@ -1,6 +1,6 @@
 #include <coco/convert.hpp>
 #include <coco/debug.hpp>
-#include <SpiMemoryTest.hpp>
+#include <QuadSpiMemory-Test.hpp>
 
 
 using namespace coco;

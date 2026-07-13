@@ -7,26 +7,26 @@
 
 using namespace coco;
 
-// drivers for SpiMasterTest
+// drivers for SpiMaster-Test
 struct Drivers {
     Loop_RTC0 loop;
 
     using SpiMaster = SpiMaster_SPIM;
     SpiMaster spi{loop,
+        spim::SPIM0_INFO,
+        //spim::SPIM3_INFO,
         gpio::P0_3, // SCK
         gpio::P0_2, // MOSI
-        gpio::P0_21 | gpio::Config::PULL_UP, // MISO
-        spim::SPIM0_INFO};
-        //spim::SPIM3_INFO};
+        gpio::P0_21 | gpio::Config::PULL_UP}; // MISO
 
     SpiMaster::Channel channel1{spi,
         gpio::P0_20 | gpio::Config::INVERT, // nCS
         spim::Format::FREQUENCY_500K | spim::Format::PHA1_POL1 | spim::Format::DATA_8};
     SpiDisplayChannel_SPIM channel2{spi,
         gpio::P0_19 | gpio::Config::INVERT, // nCS
-        gpio::P0_21 | gpio::Config::INVERT, true, 0xff, // D/nC shared
-        //gpio::P0_4 | gpio::Config::INVERT, false, 0xff, // D/nC
-        spim::Format::FREQUENCY_1M | spim::Format::PHA1_POL1 | spim::Format::DATA_8};
+        spim::Format::FREQUENCY_1M | spim::Format::PHA1_POL1 | spim::Format::DATA_8,
+        gpio::P0_21 | gpio::Config::INVERT, true, 0xff}; // D/nC shared
+        //gpio::P0_4 | gpio::Config::INVERT, false, 0xff}; // D/nC separate
     SpiMaster::Buffer<0, 16> buffer1{channel1};
     SpiMaster::Buffer<2, 16> buffer2{channel2};
 };

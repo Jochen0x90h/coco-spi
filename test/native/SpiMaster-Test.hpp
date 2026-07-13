@@ -6,7 +6,7 @@
 
 using namespace coco;
 
-// drivers for SpiMasterTest
+// drivers for SpiMaster-Test
 struct Drivers {
     Loop_native loop;
 

@@ -12,13 +12,12 @@ public:
     /// @brief Constructor.
     /// @param device The SPI device to operate on
     /// @param csPin Chip select pin of the slave (CS), typically nCS, therefore set gpio::Config::INVERT flag
+    /// @param format SPI format (prescaler, phase, polarity, endianness, number of data bits)
     /// @param commandPin Command indicator pin of the display, typically low for command, therefore set gpio::Config::INVERT flag
     /// @param commandPinShared true when multiple displays share the same DC pin
     /// @param commandMask Mask to apply to first byte of header to determine if command pin should b high or low
-    /// @param format SPI format (prescaler, phase, polarity, endianness, number of data bits)
-    SpiDisplayChannel_SPIM(SpiMaster_SPIM &device, gpio::Config csPin,
-        gpio::Config commandPin, bool commandPinShared, uint8_t commandMask,
-        spim::Format format);
+    SpiDisplayChannel_SPIM(SpiMaster_SPIM &device, gpio::Config csPin, spim::Format format,
+        gpio::Config commandPin, bool commandPinShared, uint8_t commandMask);
     ~SpiDisplayChannel_SPIM() override;
 
 protected:

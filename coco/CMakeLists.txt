@@ -34,9 +34,9 @@ elseif(${PLATFORM} MATCHES "^stm32")
     if(${PLATFORM} MATCHES "^stm32f4" OR ${PLATFORM} MATCHES "^stm32l4" OR ${PLATFORM} MATCHES "^stm32g4")
         target_sources(${PROJECT_NAME}
             PUBLIC FILE_SET platform_headers FILES
-                stm32/coco/platform/SpiMemory_QUADSPI_DMA.hpp
+                stm32/coco/platform/QuadSpiMaster_QUADSPI_DMA.hpp
             PRIVATE
-                stm32/coco/platform/SpiMemory_QUADSPI_DMA.cpp
+                stm32/coco/platform/QuadSpiMaster_QUADSPI_DMA.cpp
         )
     endif()
 endif()

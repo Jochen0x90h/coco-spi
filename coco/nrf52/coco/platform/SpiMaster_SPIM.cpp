@@ -7,8 +7,8 @@ namespace coco {
 
 // SpiMaster_SPIM
 
-SpiMaster_SPIM::SpiMaster_SPIM(Loop_Queue &loop, gpio::Config sckPin, gpio::Config mosiPin, gpio::Config misoPin,
-    const spim::Info &spiInfo)
+SpiMaster_SPIM::SpiMaster_SPIM(Loop_Queue &loop, const spim::Info &spiInfo,
+    gpio::Config sckPin, gpio::Config mosiPin, gpio::Config misoPin)
     : loop_(loop)
 {
     spiInfo.enablePins(sckPin, mosiPin, misoPin);
@@ -87,9 +87,9 @@ void SpiMaster_SPIM::SPIM_IRQHandler() {
 
 // SpiMaster_SPIM::Channel
 
-SpiMaster_SPIM::Channel::Channel(SpiMaster_SPIM &device, gpio::Config csPin, spim::Format format)
+SpiMaster_SPIM::Channel::Channel(SpiMaster_SPIM &device, gpio::Config csPin, spim::Format format, Flags flags)
     : BufferDevice(State::READY)
-    , device_(device), csPin_(csPin), format_(format)
+    , device_(device), csPin_(csPin), format_(format), flags_(flags)
 {
     // configure CS pin
     gpio::enableOutput(csPin, false);
@@ -115,7 +115,16 @@ int SpiMaster_SPIM::Channel::transferFirst(BufferBase &buffer) {
     // activate CS pin
     gpio::setOutput(csPin_, true);
 
-    int size = buffer.headerCapacity_;//std::min(uint16_t(buffer.headerType_), buffer.headerCapacity_);
+    // get header
+    auto header = buffer.header_;
+    int size = buffer.headerCapacity_;
+
+    // check for variable header size
+    if ((flags_ & Flags::VARIABLE_HEADER_SIZE) != 0) {
+        size = header[0];
+        ++header;
+    }
+
     if (size == 0) {
         // no header, start transfer of buffer data
         start(buffer.op(), buffer.data(), buffer.size());
@@ -125,7 +134,7 @@ int SpiMaster_SPIM::Channel::transferFirst(BufferBase &buffer) {
         return 1;
     } else {
         // start transfer of header
-        start(BufferBase::Op::WRITE, buffer.header_, size);
+        start(BufferBase::Op::WRITE, header, size);
 
         // two more steps to do (transfer data, disable CS pin)
         return 2;
@@ -177,7 +186,7 @@ bool SpiMaster_SPIM::BufferBase::start() {
         setError(std::errc::resource_unavailable_try_again);
         return false;
     }
-    if (((op_ & Op::READ_WRITE) == 0 || size_ == 0) && ((op_ & Op::ERASE) == 0 || !channel_.eraseSupported_)) {
+    if (((op_ & Op::READ_WRITE) == 0 || size_ == 0) && ((op_ & Op::ERASE) == 0 || (channel_.flags_ & Flags::SUPPORT_ERASE) == 0)) {
         setSuccess();
         return false;
     }
