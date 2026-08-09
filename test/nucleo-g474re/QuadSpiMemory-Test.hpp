@@ -1,7 +1,7 @@
 #pragma once
 
 #include <coco/platform/Loop_TIM2.hpp>
-#include <coco/platform/QuadSpiMaster_QUADSPI_DMA.hpp>
+#include <coco/platform/SpiMaster_XSPI_DMA.hpp>
 #include <coco/platform/SpiDisplayChannel_SPI_DMA.hpp>
 #include <coco/board/config.hpp>
 
@@ -22,28 +22,28 @@ const gpio::Config qspiPins[] = {
 struct Drivers {
     Loop_TIM2 loop{APB1_TIMER_CLOCK};
 
-    using QuadSpiMaster = QuadSpiMaster_QUADSPI_DMA;
-    QuadSpiMaster qspi{loop,
-        qspi::QUADSPI_INFO,
+    using SpiMaster = SpiMaster_XSPI_DMA;
+    SpiMaster qspi{loop,
+        xspi::QUADSPI_INFO,
         qspiPins,
         dma::DMA1_CH1_INFO};
 
-    QuadSpiMaster::MemoryChannel channel1{qspi,
+    SpiMaster::MemoryChannel channel1{qspi,
         gpio::PA9 | gpio::Config::SPEED_MEDIUM | gpio::Config::INVERT, // nCS (CN5 1)
-        qspi::Format::CLOCK_DIV_256 | qspi::Format::MEMORY_16MB | qspi::Format::BANK_2,
-        qspi::CommFormat::INSTRUCTION_1_LINE | qspi::CommFormat::ADDRESS_1_LINE | qspi::CommFormat::ADDRESS_24 | qspi::CommFormat::DATA_1_LINE,
-        0x03, // read
-        0x06, // write enable
-        0x02, // write (256 byte boundary)
-        0x20, // sector erase (4KB)
-        0x05}; // read status
-    QuadSpiMaster::Buffer<16> buffer1{channel1};
+        xspi::Format::CLOCK_DIV_256 | xspi::Format::MEMORY_16MB | xspi::Format::BANK_2, xspi::Timing::DEFAULT,
+        3, // address bytes
+        xspi::MODE_1_1_1, 0x03, 0, // read
+        xspi::MODE_1_1_1, 0x06, // write enable
+        xspi::MODE_1_1_1, 0x02, 0, // write (256 byte boundary)
+        xspi::MODE_1_1_1, 0x20, // sector erase (4KB)
+        xspi::MODE_1_1_1, 0x05}; // read status
+    SpiMaster::Buffer<16> buffer1{channel1};
 };
 
 Drivers drivers;
 
 extern "C" {
 void QUADSPI_IRQHandler() {
-    drivers.qspi.QUADSPI_IRQHandler();
+    drivers.qspi.XSPI_IRQHandler();
 }
 }

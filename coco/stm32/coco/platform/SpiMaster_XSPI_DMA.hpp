@@ -6,31 +6,32 @@
 #include <coco/InterruptQueue.hpp>
 #include <coco/platform/Loop_Queue.hpp>
 #include <coco/platform/gpio.hpp>
-#include <coco/platform/qspi.hpp>
+#include <coco/platform/xspi.hpp>
 #include <coco/platform/nvic.hpp>
 
 
-#ifdef HAVE_QUADSPI
+#ifdef HAVE_XSPI
 namespace coco {
 
-/// @brief Quad SPI master stm32 with multiple virtual channels for accessing external memory chips.
+/// @brief Implementation of SPI master for stm32 with multiple virtual channels using QUADSPI/OCTOSPI.
+/// For example for accessing external memory chips.
 ///
 /// Resources:
-///   QUADSPI
+///   QUADSPI/OCTOSPI
 //      SPI master
-///   DMAx
+///   DMA
 ///     RX channel (read)
 ///     TX channel (write)
 ///   GPIO
 ///     CS-pins
-class QuadSpiMaster_QUADSPI_DMA {
+class SpiMaster_XSPI_DMA {
 public:
     /// @brief Constructor for the quad SPI device. For each SPI slave a Channel is needed which drives the CS pin of the slave.
     /// @param loop Event loop
-    /// @param qspiInfo Info of QUADSPI instance to use
-    /// @param pins Pins (SCK, MOSI, MISO or IO0, IO1, IO2, IO3, see data sheet)
+    /// @param xspiInfo Info of QUADSPI instance to use
+    /// @param pins Pins (SCK, MOSI, MISO or IO0, IO1, ..., IO7, see data sheet)
     /// @param dmaInfo Info of DMA channel to use
-    QuadSpiMaster_QUADSPI_DMA(Loop_Queue &loop, const qspi::Info &qspiInfo, Array<const gpio::Config> pins,
+    SpiMaster_XSPI_DMA(Loop_Queue &loop, const xspi::Info &xspiInfo, Array<const gpio::Config> pins,
         const dma::Info<> &dmaInfo);
 
 
@@ -38,7 +39,7 @@ public:
 
     // internal buffer base class, derives from IntrusiveListNode for the list of buffers and Loop_Queue::Handler to be notified from the event loop
     class BufferBase : public coco::Buffer, public IntrusiveListNode, public Loop_Queue::CompletionHandler {
-        friend class QuadSpiMaster_QUADSPI_DMA;
+        friend class SpiMaster_XSPI_DMA;
     public:
         /// @brief Constructor
         /// @param headerAndData Header (4 bytes) and data of the buffer
@@ -74,7 +75,7 @@ public:
     using TxChannel = dma::Channel<dma::Mode::TX8>;
     struct Registers {
         // quad spi
-        qspi::Instance qspi;
+        xspi::Instance xspi;
 
         // dma channels
         union {
@@ -86,13 +87,13 @@ public:
     /// @brief Virtual channel to a SPI slave device using a dedicated CS pin.
     ///
     class Channel : public BufferDevice {
-        friend class QuadSpiMaster_QUADSPI_DMA;
+        friend class SpiMaster_XSPI_DMA;
         friend class BufferBase;
     public:
         /// @brief Constructor.
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), set gpio::Config::INVERT flag for nCS
-        Channel(QuadSpiMaster_QUADSPI_DMA &device, gpio::Config csPin, qspi::Format format);
+        Channel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format);
         ~Channel() override;
 
         // BufferDevice methods
@@ -108,9 +109,9 @@ public:
         // start next transfer or return false if no more transfers are necessary
         virtual int transferNext(BufferBase &buffer, int steps) = 0;
 
-        QuadSpiMaster_QUADSPI_DMA &device_;
+        SpiMaster_XSPI_DMA &device_;
         gpio::Config csPin_;
-        qspi::Format format_;
+        xspi::Format format_;
 
         // list of buffers
         IntrusiveList<BufferBase> buffers_;
@@ -128,7 +129,7 @@ public:
         /// @param addressBits Mask of address bits, typically 0x7f (0x7e for MMA7455L where bit 7 is R/W and bit 0 is don't care)
         /// @param readInstruction Read instruction, typically 0x80 (0x00 for MMA7455L)
         /// @param writeInstruction Write instruction, typically 0x00 (0x80 for for MMA7455L)
-        ByteChannel(QuadSpiMaster_QUADSPI_DMA &device, gpio::Config csPin, qspi::Format format,
+        ByteChannel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format,
             int addressBits = 0x7f,
             int readInstruction = 0x80, int writeInstruction = 0x00)
             : Channel(device, csPin, format)
@@ -160,21 +161,22 @@ public:
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), set gpio::Config::INVERT flag for nCS
         /// @param format SPI format (prescaler, delay, bank, memory size)
+        /// @param timing SPI timing (dummy cycles, DDR delay)
         /// @param addressBytes Number of address bytes (1 to 4)
         /// @param readInstruction Read instruction
-        /// @param readMode Read mode (e.g. qspi::Mode_1_1_1 or qspi::Mode_1_1_4)
+        /// @param readMode Read mode (e.g. xspi::Mode_1_1_1 or xspi::Mode_1_1_4)
         /// @param readDummyCycles Number of dummy clock cycles after address for read instruction (max. 31)
         /// @param writeInstruction Write instruction
-        /// @param writeMode Write mode (e.g. qspi::Mode_1_1_1 or qspi::Mode_1_1_4)
+        /// @param writeMode Write mode (e.g. xspi::Mode_1_1_1 or xspi::Mode_1_1_4)
         /// @param writeDummyCycles Number of dummy clock cycles after address for write instruction (max. 31)
         template <typename I>
-        RegistersChannel(QuadSpiMaster_QUADSPI_DMA &device, gpio::Config csPin, qspi::Format format,
+        RegistersChannel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format, xspi::Timing timing,
             int addressBytes,
-            I readInstruction, qspi::Mode readMode, int readDummyCycles,
-            I writeInstruction, qspi::Mode writeMode, int writeDummyCycles)
+            xspi::Mode readMode, I readInstruction, int readDummyCycles,
+            xspi::Mode writeMode, I writeInstruction, int writeDummyCycles)
             : Channel(device, csPin, format)
-            , readCommConfig_(qspi::makeCommConfig(readInstruction, qspi::Function::INDIRECT_READ, readMode, addressBytes, readDummyCycles))
-            , writeCommConfig_(qspi::makeCommConfig(writeInstruction, qspi::Function::INDIRECT_WRITE, writeMode, addressBytes, writeDummyCycles))
+            , readCommConfig_(xspi::makeCommConfig(readMode, readInstruction, addressBytes, xspi::makeTiming(timing, readDummyCycles)))
+            , writeCommConfig_(xspi::makeCommConfig(writeMode, writeInstruction, addressBytes, xspi::makeTiming(timing, writeDummyCycles)))
         {
         }
         ~RegistersChannel() override;
@@ -196,33 +198,34 @@ public:
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), set gpio::Config::INVERT flag for nCS
         /// @param format SPI format (prescaler, delay, bank, memory size)
+        /// @param timing SPI timing (dummy cycles, DDR delay)
         /// @param addressBytes Number of address bytes (1 to 4)
         /// @param readInstruction Read instruction
-        /// @param readMode Read mode (e.g. qspi::Mode_1_1_1 or qspi::Mode_1_1_4)
+        /// @param readMode Read mode (e.g. xspi::Mode_1_1_1 or xspi::Mode_1_1_4)
         /// @param readDummyCycles Number of dummy clock cycles after address for read instruction (max. 31)
         /// @param writeEnableInstruction Write enable instruction
-        /// @param writeEnableMode Write enable mode (e.g. qspi::Mode_1_0_0)
+        /// @param writeEnableMode Write enable mode (e.g. xspi::Mode_1_0_0)
         /// @param writeInstruction Write instruction
-        /// @param writeMode Write mode (e.g. qspi::Mode_1_1_1 or qspi::Mode_1_1_4)
+        /// @param writeMode Write mode (e.g. xspi::Mode_1_1_1 or xspi::Mode_1_1_4)
         /// @param writeDummyCycles Number of dummy clock cycles after address for write instruction (max. 31)
         /// @param eraseInstruction Erase instruction
-        /// @param eraseMode Erase mode (e.g. qspi::Mode_1_1_0)
+        /// @param eraseMode Erase mode (e.g. xspi::Mode_1_1_0)
         /// @param readStatusInstruction Read status instruction
-        /// @param readStatusMode Read status mode (e.g. qspi::Mode_1_0_1)
+        /// @param readStatusMode Read status mode (e.g. xspi::Mode_1_0_1)
         template <typename I>
-        MemoryChannel(QuadSpiMaster_QUADSPI_DMA &device, gpio::Config csPin, qspi::Format format,
+        MemoryChannel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format, xspi::Timing timing,
             int addressBytes,
-            I readInstruction, qspi::Mode readMode, int readDummyCycles,
-            I writeEnableInstruction, qspi::Mode writeEnableMode,
-            I writeInstruction, qspi::Mode writeMode, int writeDummyCycles,
-            I eraseInstruction, qspi::Mode eraseMode,
-            I readStatusInstruction, qspi::Mode readStatusMode)
+            xspi::Mode readMode, I readInstruction, int readDummyCycles,
+            xspi::Mode writeEnableMode, I writeEnableInstruction,
+            xspi::Mode writeMode, I writeInstruction, int writeDummyCycles,
+            xspi::Mode eraseMode, I eraseInstruction,
+            xspi::Mode readStatusMode, I readStatusInstruction)
             : Channel(device, csPin, format)
-            , readCommConfig_(qspi::makeCommConfig(readInstruction, qspi::Function::INDIRECT_READ, readMode, addressBytes, readDummyCycles))
-            , writeEnableCommConfig_(qspi::makeCommConfig(writeEnableInstruction, qspi::Function::INDIRECT_WRITE, writeEnableMode, addressBytes, 0))
-            , writeCommConfig_(qspi::makeCommConfig(writeInstruction, qspi::Function::INDIRECT_WRITE, writeMode, addressBytes, writeDummyCycles))
-            , eraseCommConfig_(qspi::makeCommConfig(eraseInstruction, qspi::Function::INDIRECT_WRITE, eraseMode, addressBytes, 0))
-            , readStatusCommConfig_(qspi::makeCommConfig(readStatusInstruction, qspi::Function::INDIRECT_READ, readStatusMode, addressBytes, 0))
+            , readCommConfig_(xspi::makeCommConfig(readMode, readInstruction, addressBytes, xspi::makeTiming(timing, readDummyCycles)))
+            , writeEnableCommConfig_(xspi::makeCommConfig(writeEnableMode, writeEnableInstruction, addressBytes, timing))
+            , writeCommConfig_(xspi::makeCommConfig(writeMode, writeInstruction, addressBytes, xspi::makeTiming(timing, writeDummyCycles)))
+            , eraseCommConfig_(xspi::makeCommConfig(eraseMode, eraseInstruction, addressBytes, timing))
+            , readStatusCommConfig_(xspi::makeCommConfig(readStatusMode, readStatusInstruction, addressBytes, timing))
         {}
         ~MemoryChannel() override;
 
@@ -243,17 +246,17 @@ public:
 
     /// @brief Call from QUADSPI interrupt handler.
     /// e.g. extern "C" QUADSPI_IRQHandler()
-    void QUADSPI_IRQHandler();
+    void XSPI_IRQHandler();
 
 protected:
     Loop_Queue &loop_;
 
     Registers registers_;
-    int qspiIrq_;
+    int xspiIrq_;
 
     // list of active transfers
     InterruptQueue<BufferBase> transfers_;
 };
 
 } // namespace coco
-#endif // HAVE_QUADSPI
+#endif // HAVE_XSPI

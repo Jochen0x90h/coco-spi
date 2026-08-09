@@ -11,12 +11,12 @@
 
 namespace coco {
 
-/// @brief Implementation of SPI hardware interface for stm32 with multiple virtual channels.
+/// @brief Implementation of SPI master for stm32 with multiple virtual channels using SPI.
 ///
 /// Resources:
-///   SPIx
+///   SPI
 //      SPI master
-///   DMAx
+///   DMA
 ///     RX channel (read)
 ///     TX channel (write)
 ///   GPIO

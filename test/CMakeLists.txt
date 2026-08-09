@@ -46,4 +46,4 @@ board_test(SpiMaster-Test coco-devboards::nucleo-h503rb)
 #board_test(SpiMaster-Test coco-devboards::nucleo-h563zi)
 board_test(SpiMaster-Test coco-devboards::nucleo-u385rg-q)
 
-#board_test(QuadSpiMemory-Test coco-devboards::nucleo-g474re)
+board_test(QuadSpiMemory-Test coco-devboards::nucleo-g474re)
