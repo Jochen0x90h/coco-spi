@@ -118,7 +118,6 @@ bool SpiMaster_XSPI_DMA::BufferBase::start() {
         return false;
     }
 
-    //op_ = op;
     auto &channel = channel_;
     auto &device = channel.device_;
 

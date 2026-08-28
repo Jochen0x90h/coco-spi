@@ -53,13 +53,14 @@ public:
         bool cancel() override;
 
     protected:
+        // CompletionHandler methods
         void onCompletion() override;
 
         Channel &channel_;
     };
 
     /// @brief Buffer for transferring data to/from a SPI slave.
-    /// A 4 byte header contains the address in native byte order
+    /// Header capacity is 4 byte and contains the register/memory address in native byte order.
     /// @tparam B capacity of buffer
     template <int B>
     class Buffer : public BufferBase {
@@ -85,7 +86,7 @@ public:
     };
 
     /// @brief Virtual channel to a SPI slave device using a dedicated CS pin.
-    ///
+    /// Is an abstract base class for RegistersChannel, MemoryChannel or custom implementations.
     class Channel : public BufferDevice {
         friend class SpiMaster_XSPI_DMA;
         friend class BufferBase;

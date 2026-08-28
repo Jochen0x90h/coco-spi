@@ -50,6 +50,7 @@ public:
         bool cancel() override;
 
 protected:
+        // CompletionHandler methods
         void onCompletion() override;
 
         Channel &channel_;

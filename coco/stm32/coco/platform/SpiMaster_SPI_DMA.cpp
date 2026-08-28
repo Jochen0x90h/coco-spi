@@ -110,7 +110,6 @@ bool SpiMaster_SPI_DMA::BufferBase::start() {
     }
     //debug::out << "BufferBase::start\n";
 
-    //op_ = op;
     auto &channel = channel_;
     auto &device = channel.device_;
 
