@@ -24,14 +24,14 @@ namespace coco {
 ///     TX channel (write)
 ///   GPIO
 ///     CS-pins
-class SpiMaster_XSPI_DMA {
+class XspiMaster_XSPI_DMA {
 public:
     /// @brief Constructor for the quad SPI device. For each SPI slave a Channel is needed which drives the CS pin of the slave.
     /// @param loop Event loop
     /// @param xspiInfo Info of QUADSPI instance to use
     /// @param pins Pins (SCK, MOSI, MISO or IO0, IO1, ..., IO7, see data sheet)
     /// @param dmaInfo Info of DMA channel to use
-    SpiMaster_XSPI_DMA(Loop_Queue &loop, const xspi::Info &xspiInfo, Array<const gpio::Config> pins,
+    XspiMaster_XSPI_DMA(Loop_Queue &loop, const xspi::Info &xspiInfo, Array<const gpio::Config> pins,
         const dma::Info<> &dmaInfo);
 
 
@@ -39,7 +39,7 @@ public:
 
     // internal buffer base class, derives from IntrusiveListNode for the list of buffers and Loop_Queue::Handler to be notified from the event loop
     class BufferBase : public coco::Buffer, public IntrusiveListNode, public Loop_Queue::CompletionHandler {
-        friend class SpiMaster_XSPI_DMA;
+        friend class XspiMaster_XSPI_DMA;
     public:
         /// @brief Constructor
         /// @param headerAndData Header (4 bytes) and data of the buffer
@@ -88,13 +88,13 @@ public:
     /// @brief Virtual channel to a SPI slave device using a dedicated CS pin.
     /// Is an abstract base class for RegistersChannel, MemoryChannel or custom implementations.
     class Channel : public BufferDevice {
-        friend class SpiMaster_XSPI_DMA;
+        friend class XspiMaster_XSPI_DMA;
         friend class BufferBase;
     public:
         /// @brief Constructor.
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), set gpio::Config::INVERT flag for nCS
-        Channel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format);
+        Channel(XspiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format);
         ~Channel() override;
 
         // BufferDevice methods
@@ -110,7 +110,7 @@ public:
         // start next transfer or return false if no more transfers are necessary
         virtual int transferNext(BufferBase &buffer, int steps) = 0;
 
-        SpiMaster_XSPI_DMA &device_;
+        XspiMaster_XSPI_DMA &device_;
         gpio::Config csPin_;
         xspi::Format format_;
 
@@ -118,19 +118,20 @@ public:
         IntrusiveList<BufferBase> buffers_;
     };
 
-    /// @brief Virtual channel for accessing SPI registers using just one byte header.
-    /// The buffer header size must be 4 and contains an uint32_t for the address.
+    /// @brief Virtual channel for accessing SPI registers using just one byte header for read/write flag and address.
+    /// The buffer header size must be 4 and contains an uint32_t for the address (up to 7 bits are transferred).
     /// Transfers a byte as header containing a read/write flag and the address.
 /*  class ByteChannel : public Channel {
     public:
         /// @brief Constructor.
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), set gpio::Config::INVERT flag for nCS
-        /// @param format SPI format (prescaler, delay, bank, memory size)
+        /// @param format SPI format (prescaler, clock mode, bank, memory size)
+        /// @param timing SPI timing (SAMPLE_SHIFT, DDR delay)
         /// @param addressBits Mask of address bits, typically 0x7f (0x7e for MMA7455L where bit 7 is R/W and bit 0 is don't care)
         /// @param readInstruction Read instruction, typically 0x80 (0x00 for MMA7455L)
         /// @param writeInstruction Write instruction, typically 0x00 (0x80 for for MMA7455L)
-        ByteChannel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format,
+        ByteChannel(XspiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format, xspi::Timing timing,
             int addressBits = 0x7f,
             int readInstruction = 0x80, int writeInstruction = 0x00)
             : Channel(device, csPin, format)
@@ -152,8 +153,8 @@ public:
         uint8_t header_;
     };*/
 
-    /// @brief Virtual channel for accessing SPI registers.
-    /// The buffer header size must be 4 and contains an uint32_t for the register address.
+    /// @brief Virtual channel for accessing SPI registers using an instruction and a separate address.
+    /// The buffer header size must be 4 and contains an uint32_t for the register address (1-4 bytes are transferred)..
     /// Transfers a header consisting of a command byte and an address of 1 to 4 bytes, followed by data to write or read.
     class RegistersChannel : public Channel {
     public:
@@ -161,8 +162,8 @@ public:
         /// @tparam I Type of instruction, e.g. int or enum
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), set gpio::Config::INVERT flag for nCS
-        /// @param format SPI format (prescaler, delay, bank, memory size)
-        /// @param timing SPI timing (dummy cycles, DDR delay)
+        /// @param format SPI format (prescaler, clock mode, bank, memory size)
+        /// @param timing SPI timing (SAMPLE_SHIFT, DDR delay)
         /// @param addressBytes Number of address bytes (1 to 4)
         /// @param readInstruction Read instruction
         /// @param readMode Read mode (e.g. xspi::Mode_1_1_1 or xspi::Mode_1_1_4)
@@ -171,7 +172,7 @@ public:
         /// @param writeMode Write mode (e.g. xspi::Mode_1_1_1 or xspi::Mode_1_1_4)
         /// @param writeDummyCycles Number of dummy clock cycles after address for write instruction (max. 31)
         template <typename I>
-        RegistersChannel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format, xspi::Timing timing,
+        RegistersChannel(XspiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format, xspi::Timing timing,
             int addressBytes,
             xspi::Mode readMode, I readInstruction, int readDummyCycles,
             xspi::Mode writeMode, I writeInstruction, int writeDummyCycles)
@@ -198,8 +199,8 @@ public:
         /// @brief Constructor.
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), set gpio::Config::INVERT flag for nCS
-        /// @param format SPI format (prescaler, delay, bank, memory size)
-        /// @param timing SPI timing (dummy cycles, DDR delay)
+        /// @param format SPI format (prescaler, clock mode, bank, memory size)
+        /// @param timing SPI timing (SAMPLE_SHIFT, DDR delay)
         /// @param addressBytes Number of address bytes (1 to 4)
         /// @param readInstruction Read instruction
         /// @param readMode Read mode (e.g. xspi::Mode_1_1_1 or xspi::Mode_1_1_4)
@@ -214,7 +215,7 @@ public:
         /// @param readStatusInstruction Read status instruction
         /// @param readStatusMode Read status mode (e.g. xspi::Mode_1_0_1)
         template <typename I>
-        MemoryChannel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format, xspi::Timing timing,
+        MemoryChannel(XspiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format, xspi::Timing timing,
             int addressBytes,
             xspi::Mode readMode, I readInstruction, int readDummyCycles,
             xspi::Mode writeEnableMode, I writeEnableInstruction,
@@ -245,7 +246,7 @@ public:
     };
 
 
-    /// @brief Call from QUADSPI interrupt handler.
+    /// @brief Call from QUADSPI/OCTOSPI interrupt handler.
     /// e.g. extern "C" QUADSPI_IRQHandler()
     void XSPI_IRQHandler();
 

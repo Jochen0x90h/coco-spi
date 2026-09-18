@@ -1,7 +1,7 @@
 #pragma once
 
 #include <coco/platform/Loop_TIM2.hpp>
-#include <coco/platform/SpiMaster_XSPI_DMA.hpp>
+#include <coco/platform/XspiMaster_XSPI_DMA.hpp>
 #include <coco/platform/SpiDisplayChannel_SPI_DMA.hpp>
 #include <coco/board/config.hpp>
 
@@ -22,7 +22,7 @@ const gpio::Config qspiPins[] = {
 struct Drivers {
     Loop_TIM2 loop{APB1_TIMER_CLOCK};
 
-    using SpiMaster = SpiMaster_XSPI_DMA;
+    using SpiMaster = XspiMaster_XSPI_DMA;
     SpiMaster qspi{loop,
         xspi::QUADSPI_INFO,
         qspiPins,

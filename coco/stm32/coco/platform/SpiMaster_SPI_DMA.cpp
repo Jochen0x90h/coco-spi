@@ -11,7 +11,7 @@ SpiMaster_SPI_DMA::SpiMaster_SPI_DMA(Loop_Queue &loop, const spi::Info &spiInfo,
     gpio::Config mosiPin, gpio::Config misoPin, const dma::DualInfo<> &dmaInfo, spi::Config config)
     : loop_(loop)
 {
-    // configure pins
+    // configure SPI pins
     spiInfo.enablePins(sckPin, mosiPin, misoPin);
 
     auto &r = registers_;
@@ -290,7 +290,7 @@ int SpiMaster_SPI_DMA::ByteRegistersChannel::transferFirst(SpiMaster_SPI_DMA::Bu
 SpiMaster_SPI_DMA::RegistersChannel::~RegistersChannel() {
 }
 
-int SpiMaster_SPI_DMA::RegistersChannel::transferFirst(SpiMaster_SPI_DMA::BufferBase &buffer) {
+int SpiMaster_SPI_DMA::RegistersChannel::transferFirst(BufferBase &buffer) {
     auto &r = registers();
 
     // set format

@@ -1,4 +1,4 @@
-#include "SpiMaster_XSPI_DMA.hpp"
+#include "XspiMaster_XSPI_DMA.hpp"
 //#include <coco/convert.hpp>
 //#include <coco/debug.hpp>
 
@@ -6,9 +6,9 @@
 #ifdef HAVE_XSPI
 namespace coco {
 
-// SpiMaster_XSPI_DMA
+// XspiMaster_XSPI_DMA
 
-SpiMaster_XSPI_DMA::SpiMaster_XSPI_DMA(Loop_Queue &loop, const xspi::Info &xspiInfo,
+XspiMaster_XSPI_DMA::XspiMaster_XSPI_DMA(Loop_Queue &loop, const xspi::Info &xspiInfo,
     Array<const gpio::Config> pins, const dma::Info<> &dmaInfo)
     : loop_(loop)
 {
@@ -36,7 +36,7 @@ SpiMaster_XSPI_DMA::SpiMaster_XSPI_DMA(Loop_Queue &loop, const xspi::Info &xspiI
     xspiInfo.map(dmaInfo);
 }
 
-void SpiMaster_XSPI_DMA::XSPI_IRQHandler() {
+void XspiMaster_XSPI_DMA::XSPI_IRQHandler() {
     //debug::out << "irq\n";
     auto &r = registers_;
 
@@ -96,18 +96,18 @@ void SpiMaster_XSPI_DMA::XSPI_IRQHandler() {
 }
 
 
-// SpiMaster_XSPI_DMA::BufferBase
+// XspiMaster_XSPI_DMA::BufferBase
 
-SpiMaster_XSPI_DMA::BufferBase::BufferBase(uint8_t *headerAndData, int capacity, Channel &channel)
+XspiMaster_XSPI_DMA::BufferBase::BufferBase(uint8_t *headerAndData, int capacity, Channel &channel)
     : coco::Buffer(headerAndData, 4, capacity, BufferBase::State::READY), channel_(channel)
 {
     channel.buffers_.add(*this);
 }
 
-SpiMaster_XSPI_DMA::BufferBase::~BufferBase() {
+XspiMaster_XSPI_DMA::BufferBase::~BufferBase() {
 }
 
-bool SpiMaster_XSPI_DMA::BufferBase::start() {
+bool XspiMaster_XSPI_DMA::BufferBase::start() {
     if (state_ != State::READY) {
         assert(false);
         setError(std::errc::resource_unavailable_try_again);
@@ -131,7 +131,7 @@ bool SpiMaster_XSPI_DMA::BufferBase::start() {
     return true;
 }
 
-bool SpiMaster_XSPI_DMA::BufferBase::cancel() {
+bool XspiMaster_XSPI_DMA::BufferBase::cancel() {
     if (state_ != State::BUSY)
         return false;
     auto &device = channel_.device_;
@@ -147,38 +147,38 @@ bool SpiMaster_XSPI_DMA::BufferBase::cancel() {
     return true;
 }
 
-void SpiMaster_XSPI_DMA::BufferBase::onCompletion() {
+void XspiMaster_XSPI_DMA::BufferBase::onCompletion() {
     setReady();
 }
 
 
-// SpiMaster_XSPI_DMA::Channel
+// XspiMaster_XSPI_DMA::Channel
 
-SpiMaster_XSPI_DMA::Channel::Channel(SpiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format)
+XspiMaster_XSPI_DMA::Channel::Channel(XspiMaster_XSPI_DMA &device, gpio::Config csPin, xspi::Format format)
     : BufferDevice(State::READY), device_(device), csPin_(csPin), format_(format)
 {
     // configure CS pin
     gpio::enableOutput(csPin, false);
 }
 
-SpiMaster_XSPI_DMA::Channel::~Channel() {
+XspiMaster_XSPI_DMA::Channel::~Channel() {
 }
 
-int SpiMaster_XSPI_DMA::Channel::getBufferCount() {
+int XspiMaster_XSPI_DMA::Channel::getBufferCount() {
     return buffers_.count();
 }
 
-SpiMaster_XSPI_DMA::BufferBase &SpiMaster_XSPI_DMA::Channel::getBuffer(int index) {
+XspiMaster_XSPI_DMA::BufferBase &XspiMaster_XSPI_DMA::Channel::getBuffer(int index) {
     return buffers_.get(index);
 }
 
 
-// SpiMaster_XSPI_DMA::RegistersChannel
+// XspiMaster_XSPI_DMA::RegistersChannel
 
-SpiMaster_XSPI_DMA::RegistersChannel::~RegistersChannel() {
+XspiMaster_XSPI_DMA::RegistersChannel::~RegistersChannel() {
 }
 
-int SpiMaster_XSPI_DMA::RegistersChannel::transferFirst(BufferBase &buffer) {
+int XspiMaster_XSPI_DMA::RegistersChannel::transferFirst(BufferBase &buffer) {
     auto &r = registers();
 
     // wait until QUADSQI is ready
@@ -228,7 +228,7 @@ int SpiMaster_XSPI_DMA::RegistersChannel::transferFirst(BufferBase &buffer) {
     // -> QUADSPI_IRQHandler
 }
 
-int SpiMaster_XSPI_DMA::RegistersChannel::transferNext(BufferBase &buffer, int steps) {
+int XspiMaster_XSPI_DMA::RegistersChannel::transferNext(BufferBase &buffer, int steps) {
     auto &r = registers();
 
 
@@ -245,12 +245,12 @@ int SpiMaster_XSPI_DMA::RegistersChannel::transferNext(BufferBase &buffer, int s
 }
 
 
-// SpiMaster_XSPI_DMA::MemoryChannel
+// XspiMaster_XSPI_DMA::MemoryChannel
 
-SpiMaster_XSPI_DMA::MemoryChannel::~MemoryChannel() {
+XspiMaster_XSPI_DMA::MemoryChannel::~MemoryChannel() {
 }
 
-int SpiMaster_XSPI_DMA::MemoryChannel::transferFirst(BufferBase &buffer) {
+int XspiMaster_XSPI_DMA::MemoryChannel::transferFirst(BufferBase &buffer) {
     auto &r = registers();
 
     // wait until QUADSQI is ready
@@ -297,7 +297,7 @@ int SpiMaster_XSPI_DMA::MemoryChannel::transferFirst(BufferBase &buffer) {
     // -> QUADSPI_IRQHandler
 }
 
-int SpiMaster_XSPI_DMA::MemoryChannel::transferNext(BufferBase &buffer, int steps) {
+int XspiMaster_XSPI_DMA::MemoryChannel::transferNext(BufferBase &buffer, int steps) {
     auto &r = registers();
 
     // deactivate CS pin

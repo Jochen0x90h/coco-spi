@@ -62,7 +62,6 @@ public:
     };
 
     /// @brief Buffer for transferring data to/from a SPI slave.
-    /// Note that the header may be overwritten when reading data, therefore always set the header before read() or transfer()
     /// @tparam H capacity of header
     /// @tparam B capacity of buffer
     template <int H, int B>
@@ -88,7 +87,7 @@ public:
         } dma;
     };
 
-    enum class Flags {
+    enum class Flags : uint8_t {
         NONE = 0,
         SUPPORT_ERASE = 1 << 2,
 
@@ -98,7 +97,7 @@ public:
 
     /// @brief Virtual channel to a SPI slave device using a dedicated CS pin.
     /// Default implementation transfers header and data as-is.
-    /// The header is either fixed or variable size depending on the flags
+    /// The header is either fixed or variable size depending on the flag Flags::VARIABLE_HEADER_SIZE
     class Channel : public BufferDevice {
         friend class SpiMaster_SPI_DMA;
         friend class BufferBase;
@@ -137,8 +136,8 @@ public:
         IntrusiveList<BufferBase> buffers_;
     };
 
-    /// @brief Virtual channel for accessing SPI registers using just one byte header.
-    /// The buffer header size must be 4 and contains an uint32_t for the address.
+    /// @brief Virtual channel for accessing SPI registers using a header byte for read/write flag and address.
+    /// The buffer header size must be 4 and contains an uint32_t for the address (up to 7 bits are transferred).
     /// Transfers a byte as header containing a read/write flag and the address.
     class ByteRegistersChannel : public Channel {
     public:
@@ -169,9 +168,9 @@ public:
         uint8_t header_;
     };
 
-    /// @brief Virtual channel for accessing SPI registers.
-    /// The buffer header size must be 4 and contains an uint32_t for the address.
-    /// Transfers a header consisting of a command byte and an address of 1 to 4 bytes, followed by data to write or read.
+    /// @brief Virtual channel for accessing SPI registers using an instruction and a separate address.
+    /// The buffer header size must be 4 and contains an uint32_t for the address (1-4 bytes are transferred).
+    /// Transfers a header consisting of a command byte and an address of 1 to 4 bytes (big endian), followed by data to write or read.
     class RegistersChannel : public Channel {
     public:
         /// @brief Constructor.
@@ -179,7 +178,7 @@ public:
         /// @param device The SPI device to operate on
         /// @param csPin Chip select pin of the slave (CS), typically nCS, therefore set gpio::Config::INVERT flag
         /// @param format SPI format (prescaler, phase, polarity, endianness, number of data bits)
-        /// @param addressBytes Number of address bytes (1 to 4), or 0 if instruction and address are combined in one byte
+        /// @param addressBytes Number of address bytes (1 to 4)
         /// @param readInstruction Read instruction
         /// @param readDummyBytes Number of dummy bytes after address for read instruction (addressSize + readDummyBytes <= 6)
         /// @param writeInstruction Write instruction
@@ -199,7 +198,7 @@ public:
 
     protected:
         // Channel methods
-        int transferFirst(SpiMaster_SPI_DMA::BufferBase &buffer) override;
+        int transferFirst(BufferBase &buffer) override;
 
         uint8_t addressBytes_;
         uint8_t readInstruction_;
